@@ -29,7 +29,6 @@
     { id: "axe",     label: "Axe" },
   ];
 
-  // Tiers shown as columns, like mctiers
   const TIERS = [
     { id: "T1", label: "Tier 1", color: "#c8a84b", headerBg: "#2a2010", headerText: "#e8c96a" },
     { id: "T2", label: "Tier 2", color: "#888ea0", headerBg: "#1e2028", headerText: "#b0b8cc" },
@@ -40,11 +39,16 @@
 
   function emptyState() {
     const tiers = {};
+    const tierLevels = {};
     GAMEMODES.forEach(gm => {
       tiers[gm.id] = {};
-      TIERS.forEach(t => tiers[gm.id][t.id] = []);
+      tierLevels[gm.id] = {};
+      TIERS.forEach(t => {
+        tiers[gm.id][t.id] = [];
+        tierLevels[gm.id][t.id] = {};
+      });
     });
-    return { players: [], tiers };
+    return { players: [], tiers, tierLevels };
   }
 
   const app = initializeApp(firebaseConfig);
@@ -56,6 +60,7 @@
   let activeGM   = GAMEMODES[0].id;
   let dragPlayer = null;
   let dragSrc    = null;
+  let contextMenuTarget = null;
 
   async function save() {
     try { await setDoc(REF, state); }
@@ -67,9 +72,14 @@
       const d = snap.data();
       if (!d.players) d.players = [];
       if (!d.tiers)   d.tiers   = {};
+      if (!d.tierLevels) d.tierLevels = {};
       GAMEMODES.forEach(gm => {
         if (!d.tiers[gm.id]) d.tiers[gm.id] = {};
-        TIERS.forEach(t => { if (!d.tiers[gm.id][t.id]) d.tiers[gm.id][t.id] = []; });
+        if (!d.tierLevels[gm.id]) d.tierLevels[gm.id] = {};
+        TIERS.forEach(t => { 
+          if (!d.tiers[gm.id][t.id]) d.tiers[gm.id][t.id] = []; 
+          if (!d.tierLevels[gm.id][t.id]) d.tierLevels[gm.id][t.id] = {};
+        });
       });
       state = d;
     }
@@ -97,14 +107,13 @@
     const grid = document.getElementById("tier-grid");
     grid.innerHTML = "";
 
-    // Build columns for each tier
     TIERS.forEach(tier => {
       const players = state.tiers[activeGM]?.[tier.id] || [];
+      const tierLevelData = state.tierLevels?.[activeGM]?.[tier.id] || {};
 
       const col = document.createElement("div");
       col.className = "tier-col";
 
-      // Header
       const header = document.createElement("div");
       header.className = "tier-col-header";
       header.style.background = tier.headerBg;
@@ -115,7 +124,6 @@
       `;
       col.appendChild(header);
 
-      // Player rows
       const list = document.createElement("div");
       list.className = "tier-col-list" + (isAdmin ? " admin-mode" : "");
       list.dataset.tier = tier.id;
@@ -126,7 +134,10 @@
         empty.textContent = isAdmin ? "Drop here" : "—";
         list.appendChild(empty);
       } else {
-        players.forEach(name => list.appendChild(makeRow(name, tier.id)));
+        players.forEach(name => {
+          const level = tierLevelData[name] || null;
+          list.appendChild(makeRow(name, tier.id, level));
+        });
       }
 
       if (isAdmin) setupDrop(list, tier.id);
@@ -134,7 +145,6 @@
       grid.appendChild(col);
     });
 
-    // Unranked pool (below columns, only show when admin or has players)
     const inTiers = new Set(TIERS.flatMap(t => state.tiers[activeGM]?.[t.id] || []));
     const unranked = (state.players || []).filter(p => !inTiers.has(p));
 
@@ -153,7 +163,7 @@
         e.textContent = "All players are ranked";
         uList.appendChild(e);
       } else {
-        unranked.forEach(p => uList.appendChild(makeRow(p, "unranked")));
+        unranked.forEach(p => uList.appendChild(makeRow(p, "unranked", null)));
       }
 
       if (isAdmin) setupDrop(uList, "unranked");
@@ -165,9 +175,11 @@
     }
   }
 
-  function makeRow(name, srcTier) {
+  function makeRow(name, srcTier, tierLevel) {
     const row = document.createElement("div");
     row.className = "player-row";
+    row.dataset.playerName = name;
+    row.dataset.tier = srcTier;
 
     const head = document.createElement("img");
     head.className = "mc-head";
@@ -178,13 +190,21 @@
     nm.className = "player-name";
     nm.textContent = name;
 
-    const arr = document.createElement("span");
-    arr.className = "row-arrow";
-    arr.innerHTML = "&#8963;&#8963;"; // ˄˄ chevron
+    const indicator = document.createElement("span");
+    indicator.className = "tier-indicator";
+    if (tierLevel === 'high') {
+      indicator.innerHTML = '▲';
+      indicator.classList.add('high-tier');
+      indicator.title = 'High Tier';
+    } else if (tierLevel === 'low') {
+      indicator.innerHTML = '▼';
+      indicator.classList.add('low-tier');
+      indicator.title = 'Low Tier';
+    }
 
     row.appendChild(head);
     row.appendChild(nm);
-    row.appendChild(arr);
+    row.appendChild(indicator);
 
     if (isAdmin) {
       row.draggable = true;
@@ -194,19 +214,66 @@
         e.dataTransfer.effectAllowed = "move";
       });
       row.addEventListener("dragend", () => row.classList.remove("dragging"));
+      
       row.addEventListener("contextmenu", e => {
         e.preventDefault();
-        if (confirm(`Remove "${name}" from all tier lists?`)) {
-          state.players = state.players.filter(p => p !== name);
-          GAMEMODES.forEach(gm => TIERS.forEach(t => {
-            state.tiers[gm.id][t.id] = state.tiers[gm.id][t.id].filter(p => p !== name);
-          }));
-          save();
+        e.stopPropagation();
+        if (srcTier === "unranked") {
+          if (confirm(`Remove "${name}" from all tier lists?`)) {
+            state.players = state.players.filter(p => p !== name);
+            GAMEMODES.forEach(gm => TIERS.forEach(t => {
+              state.tiers[gm.id][t.id] = state.tiers[gm.id][t.id].filter(p => p !== name);
+              if (state.tierLevels[gm.id][t.id][name]) {
+                delete state.tierLevels[gm.id][t.id][name];
+              }
+            }));
+            save();
+          }
+        } else {
+          contextMenuTarget = { name, tier: srcTier, row };
+          showContextMenu(e.pageX, e.pageY, tierLevel);
         }
       });
     }
     return row;
   }
+
+  function showContextMenu(x, y, currentLevel) {
+    const menu = document.getElementById("context-menu");
+    const htOption = document.getElementById("ctx-high-tier");
+    const ltOption = document.getElementById("ctx-low-tier");
+    const clearOption = document.getElementById("ctx-clear-tier");
+    
+    htOption.classList.toggle('active', currentLevel === 'high');
+    ltOption.classList.toggle('active', currentLevel === 'low');
+    clearOption.style.display = currentLevel ? 'block' : 'none';
+    
+    menu.style.display = 'block';
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+  }
+
+  function hideContextMenu() {
+    document.getElementById("context-menu").style.display = 'none';
+    contextMenuTarget = null;
+  }
+
+  window.setTierLevel = function(level) {
+    if (!contextMenuTarget) return;
+    const { name, tier } = contextMenuTarget;
+    
+    if (!state.tierLevels[activeGM]) state.tierLevels[activeGM] = {};
+    if (!state.tierLevels[activeGM][tier]) state.tierLevels[activeGM][tier] = {};
+    
+    if (level) {
+      state.tierLevels[activeGM][tier][name] = level;
+    } else {
+      delete state.tierLevels[activeGM][tier][name];
+    }
+    
+    save();
+    hideContextMenu();
+  };
 
   function setupDrop(el, targetTier) {
     el.addEventListener("dragover",  e => { e.preventDefault(); el.classList.add("drop-over"); });
@@ -216,8 +283,14 @@
       if (!dragPlayer || !isAdmin) return;
       if (dragSrc !== "unranked")
         state.tiers[activeGM][dragSrc] = state.tiers[activeGM][dragSrc].filter(p => p !== dragPlayer);
-      if (targetTier !== "unranked" && !state.tiers[activeGM][targetTier].includes(dragPlayer))
+      if (targetTier !== "unranked" && !state.tiers[activeGM][targetTier].includes(dragPlayer)) {
         state.tiers[activeGM][targetTier].push(dragPlayer);
+        if (dragSrc !== "unranked" && dragSrc !== targetTier) {
+          if (state.tierLevels[activeGM][dragSrc]?.[dragPlayer]) {
+            delete state.tierLevels[activeGM][dragSrc][dragPlayer];
+          }
+        }
+      }
       save(); dragPlayer = null; dragSrc = null;
     });
   }
@@ -267,6 +340,10 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("pw-input").addEventListener("keydown", e => { if (e.key === "Enter") window.tryLogin(); });
+    document.addEventListener("click", (e) => {
+      const menu = document.getElementById("context-menu");
+      if (!menu.contains(e.target)) hideContextMenu();
+    });
   });
 </script>
 
@@ -489,6 +566,7 @@ body {
   border-top: 1px solid var(--border);
   cursor: default;
   transition: background .1s;
+  position: relative;
 }
 .player-row:first-child { border-top: none; }
 .tier-col-list.admin-mode .player-row { cursor: grab; }
@@ -510,6 +588,26 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ── Tier Level Indicators ── */
+.tier-indicator {
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-left: 4px;
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+}
+
+.tier-indicator.high-tier {
+  color: #4ade80;
+  text-shadow: 0 0 8px rgba(74, 222, 128, 0.4);
+}
+
+.tier-indicator.low-tier {
+  color: #f87171;
+  text-shadow: 0 0 8px rgba(248, 113, 113, 0.4);
 }
 
 .row-arrow {
@@ -560,6 +658,63 @@ body {
 }
 .unranked-list .player-row:first-child { border-top: 1px solid var(--border); }
 .unranked-list.drop-over { outline: 2px dashed var(--accent); outline-offset: -2px; border-radius: 6px; }
+
+/* ── Context Menu ── */
+#context-menu {
+  position: fixed;
+  background: #1e2230;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  min-width: 160px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  z-index: 1000;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.context-menu-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 500;
+  border-radius: 4px;
+  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.context-menu-item:hover {
+  background: var(--row-hover);
+}
+
+.context-menu-item.active {
+  background: rgba(88, 101, 242, 0.2);
+  color: #fff;
+}
+
+.context-menu-item .indicator-icon {
+  font-size: 0.7rem;
+  width: 16px;
+  text-align: center;
+}
+
+.context-menu-item.high-option .indicator-icon {
+  color: #4ade80;
+}
+
+.context-menu-item.low-option .indicator-icon {
+  color: #f87171;
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
 
 /* ── Modal ── */
 #login-modal {
@@ -658,13 +813,30 @@ body {
   <span class="lbl">● Admin</span>
   <input type="text" id="player-input" placeholder="Minecraft username..." onkeydown="handleKey(event)" maxlength="24">
   <button class="btn-add" onclick="addPlayer()">+ Add Player</button>
-  <span class="admin-hint">Drag to rank · Right-click to remove</span>
+  <span class="admin-hint">Drag to rank · Right-click player for HT/LT · Right-click unranked to remove</span>
 </div>
 
 <!-- Main -->
 <div class="main-content">
   <div id="tier-grid"></div>
   <div id="unranked-section"></div>
+</div>
+
+<!-- Context Menu -->
+<div id="context-menu">
+  <div class="context-menu-item high-option" id="ctx-high-tier" onclick="setTierLevel('high')">
+    <span class="indicator-icon">▲</span>
+    <span>Make High Tier (HT)</span>
+  </div>
+  <div class="context-menu-item low-option" id="ctx-low-tier" onclick="setTierLevel('low')">
+    <span class="indicator-icon">▼</span>
+    <span>Make Low Tier (LT)</span>
+  </div>
+  <div class="context-menu-divider" id="ctx-clear-tier" style="display: none;"></div>
+  <div class="context-menu-item" id="ctx-clear-btn" onclick="setTierLevel(null)" style="display: none; color: #888;">
+    <span class="indicator-icon">—</span>
+    <span>Clear Designation</span>
+  </div>
 </div>
 
 <!-- Login modal -->
