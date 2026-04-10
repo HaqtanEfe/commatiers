@@ -30,15 +30,13 @@
   ];
 
   const TIERS = [
-    { id: "T1", label: "Tier 1", color: "#c8a84b", headerBg: "#2a2010", headerText: "#e8c96a", points: 45 },
-    { id: "T2", label: "Tier 2", color: "#888ea0", headerBg: "#1e2028", headerText: "#b0b8cc", points: 20 },
-    { id: "T3", label: "Tier 3", color: "#a0663a", headerBg: "#241a10", headerText: "#c88050", points: 6 },
-    { id: "T4", label: "Tier 4", color: "#5a6070", headerBg: "#181c24", headerText: "#8090aa", points:  3 },
-    { id: "T5", label: "Tier 5", color: "#4a5060", headerBg: "#14181e", headerText: "#6a7888", points:  1 },
+    { id: "T1", label: "Tier 1", color: "#c8a84b", headerBg: "linear-gradient(135deg,#2a2010,#3a2e10)", headerText: "#e8c96a", points: 45 },
+    { id: "T2", label: "Tier 2", color: "#888ea0", headerBg: "linear-gradient(135deg,#1e2028,#262a38)", headerText: "#b0b8cc", points: 20 },
+    { id: "T3", label: "Tier 3", color: "#a0663a", headerBg: "linear-gradient(135deg,#241a10,#342210)", headerText: "#c88050", points: 6 },
+    { id: "T4", label: "Tier 4", color: "#5a6070", headerBg: "linear-gradient(135deg,#181c24,#1e2230)", headerText: "#8090aa", points: 3 },
+    { id: "T5", label: "Tier 5", color: "#4a5060", headerBg: "linear-gradient(135deg,#14181e,#1a1e28)", headerText: "#6a7888", points: 1 },
   ];
 
-  // HT adds +50% of tier pts, LT adds nothing extra (base pts only)
-  // HT bonus: T1+30, T2+15, T3+5, T4+2, T5+1
   const HT_BONUS = { T1: 15, T2: 10, T3: 4, T4: 1, T5: 1 };
 
   const TITLES = [
@@ -52,20 +50,13 @@
   ];
 
   function getTitle(pts) { return TITLES.find(t => pts >= t.min) || TITLES[TITLES.length - 1]; }
-
-  // Tier rank for primary gamemode detection (lower = better)
   const TIER_RANK = Object.fromEntries(TIERS.map((t, i) => [t.id, i]));
 
   function emptyState() {
-    const tiers = {};
-    const tierLevels = {};
+    const tiers = {}, tierLevels = {};
     GAMEMODES.forEach(gm => {
-      tiers[gm.id] = {};
-      tierLevels[gm.id] = {};
-      TIERS.forEach(t => {
-        tiers[gm.id][t.id] = [];
-        tierLevels[gm.id][t.id] = {};
-      });
+      tiers[gm.id] = {}; tierLevels[gm.id] = {};
+      TIERS.forEach(t => { tiers[gm.id][t.id] = []; tierLevels[gm.id][t.id] = {}; });
     });
     return { players: [], tiers, tierLevels };
   }
@@ -74,12 +65,8 @@
   const db  = getFirestore(app);
   const REF = doc(db, "tierlist", "data");
 
-  let state      = emptyState();
-  let isAdmin    = false;
-  let activeGM   = "overall";
-  let dragPlayer = null;
-  let dragSrc    = null;
-  let contextMenuTarget = null;
+  let state = emptyState(), isAdmin = false, activeGM = "overall";
+  let dragPlayer = null, dragSrc = null, contextMenuTarget = null;
 
   async function save() {
     try { await setDoc(REF, state); }
@@ -95,8 +82,8 @@
       GAMEMODES.forEach(gm => {
         if (!d.tiers[gm.id]) d.tiers[gm.id] = {};
         if (!d.tierLevels[gm.id]) d.tierLevels[gm.id] = {};
-        TIERS.forEach(t => { 
-          if (!d.tiers[gm.id][t.id]) d.tiers[gm.id][t.id] = []; 
+        TIERS.forEach(t => {
+          if (!d.tiers[gm.id][t.id]) d.tiers[gm.id][t.id] = [];
           if (!d.tierLevels[gm.id][t.id]) d.tierLevels[gm.id][t.id] = {};
         });
       });
@@ -105,30 +92,23 @@
     render();
   });
 
-  function render() {
-    renderTabs();
-    if (activeGM === "overall") renderOverall();
-    else renderColumns();
-  }
+  function render() { renderTabs(); if (activeGM === "overall") renderOverall(); else renderColumns(); }
 
-  // ── Point helpers ──────────────────────────────────
+  // ── Points ─────────────────────────────────────────
   function calcPoints(name) {
     let total = 0;
-    GAMEMODES.forEach(gm => {
-      TIERS.forEach(tier => {
-        if ((state.tiers[gm.id]?.[tier.id] || []).includes(name)) {
-          const level = state.tierLevels?.[gm.id]?.[tier.id]?.[name];
-          total += tier.points + (level === 'high' ? (HT_BONUS[tier.id] || 0) : 0);
-        }
-      });
-    });
+    GAMEMODES.forEach(gm => TIERS.forEach(tier => {
+      if ((state.tiers[gm.id]?.[tier.id] || []).includes(name)) {
+        const lv = state.tierLevels?.[gm.id]?.[tier.id]?.[name];
+        total += tier.points + (lv === 'high' ? (HT_BONUS[tier.id] || 0) : 0);
+      }
+    }));
     return total;
   }
 
   function bestTierOf(name, gmId) {
-    for (const tier of TIERS) {
+    for (const tier of TIERS)
       if ((state.tiers[gmId]?.[tier.id] || []).includes(name)) return tier;
-    }
     return null;
   }
 
@@ -141,16 +121,30 @@
     return best;
   }
 
-  // ── Overall leaderboard ────────────────────────────
+  // ── Tabs ───────────────────────────────────────────
+  function renderTabs() {
+    const bar = document.getElementById("tab-bar");
+    bar.innerHTML = "";
+
+    const tabs = [{ id: "overall", label: "Overall", icon: starIcon() }, ...GAMEMODES.map(g => ({ id: g.id, label: g.label, icon: gmIcon(g.id) }))];
+    tabs.forEach(tab => {
+      const btn = document.createElement("button");
+      btn.className = "tab-btn" + (tab.id === activeGM ? " active" : "");
+      btn.innerHTML = `<span class="tab-icon">${tab.icon}</span><strong>${tab.label}</strong>`;
+      btn.onclick = () => { activeGM = tab.id; render(); };
+      bar.appendChild(btn);
+    });
+  }
+
+  // ── Overall ────────────────────────────────────────
   function renderOverall() {
-    const grid = document.getElementById("tier-grid");
-    grid.style.display = "block";
-    grid.innerHTML = "";
+    const content = document.getElementById("main-content");
+    content.innerHTML = "";
     document.getElementById("unranked-section").innerHTML = "";
 
     const players = state.players || [];
     if (players.length === 0) {
-      grid.innerHTML = `<div style="padding:48px;text-align:center;color:var(--muted);font-size:0.85rem;font-style:italic">No players added yet.</div>`;
+      content.innerHTML = `<div class="empty-state">No players added yet.</div>`;
       return;
     }
 
@@ -158,82 +152,88 @@
       name, points: calcPoints(name), primaryGM: primaryGamemode(name),
     })).sort((a, b) => b.points - a.points);
 
-    // Header
+    // Column headers
     const hdr = document.createElement("div");
     hdr.className = "overall-header";
-    hdr.innerHTML = `<span class="oh-rank">#</span><span class="oh-player">Player</span><span class="oh-primary">Primary</span><span class="oh-tiers">Tiers</span>`;
-    grid.appendChild(hdr);
+    hdr.innerHTML = `<span>#</span><span>Player</span><span class="oh-primary">Primary</span><span class="oh-tiers">Tiers</span>`;
+    content.appendChild(hdr);
 
     let rank = 1;
     ranked.forEach((p, i) => {
       if (i > 0 && p.points < ranked[i-1].points) rank = i + 1;
       const title = getTitle(p.points);
-      const row = document.createElement("div");
-      row.className = "overall-row";
-
-      const lvlClass = rank <= 3 ? `rank-${rank}` : "rank-other";
-
       const primaryGM = p.primaryGM;
       const primaryBestTier = primaryGM ? bestTierOf(p.name, primaryGM.id) : null;
 
-      row.innerHTML = `
-        <div class="or-rank"><span class="rank-num ${lvlClass}">${rank}.</span></div>
-        <div class="or-player">
-          <img class="mc-head-lg" src="https://minotar.net/avatar/${encodeURIComponent(p.name)}/40" onerror="this.src='https://minotar.net/avatar/MHF_Steve/40'">
-          <div class="or-info">
-            <span class="or-name">${p.name}</span>
-            <span class="or-title" style="color:${title.color}">${title.icon} ${title.label} <span class="or-pts">(${p.points} pts)</span></span>
-          </div>
-        </div>
-        <div class="or-primary">${primaryGM
-          ? `<span class="primary-badge" style="background:${primaryBestTier ? primaryBestTier.color+'18' : ''};color:${primaryBestTier ? primaryBestTier.color : '#5a9fd4'};border-color:${primaryBestTier ? primaryBestTier.color+'55' : '#2a4a6a'}">${primaryGM.label}</span>`
-          : `<span class="primary-badge unranked-badge">—</span>`}
-        </div>
-        <div class="or-tiers" id="or-tiers-${i}"></div>
-      `;
-      grid.appendChild(row);
+      const row = document.createElement("div");
+      row.className = "overall-row";
 
-      const tiersEl = row.querySelector(`#or-tiers-${i}`);
+      // Rank cell — top 3 get colored bg with big skin
+      const rankCell = document.createElement("div");
+      rankCell.className = `or-rank-cell rank-cell-${rank <= 3 ? rank : 'other'}`;
+      rankCell.innerHTML = `
+        <span class="rank-num">${rank}.</span>
+        <img class="mc-skin-bg" src="https://minotar.net/avatar/${encodeURIComponent(p.name)}/60" onerror="this.src='https://minotar.net/avatar/MHF_Steve/60'">
+      `;
+
+      // Player info
+      const playerCell = document.createElement("div");
+      playerCell.className = "or-player-cell";
+      playerCell.innerHTML = `
+        <span class="or-name">${p.name}</span>
+        <span class="or-title" style="color:${title.color}">${title.icon} ${title.label} <span class="or-pts">(${p.points} points)</span></span>
+      `;
+
+      // Primary gamemode
+      const primaryCell = document.createElement("div");
+      primaryCell.className = "or-primary-cell";
+      if (primaryGM) {
+        primaryCell.innerHTML = `<span class="primary-badge" style="background:${primaryBestTier ? primaryBestTier.color+'22' : '#1a2a3a'};color:${primaryBestTier ? primaryBestTier.color : '#5a9fd4'};border-color:${primaryBestTier ? primaryBestTier.color+'55' : '#2a4a6a'}">${primaryGM.label}</span>`;
+      } else {
+        primaryCell.innerHTML = `<span class="primary-badge unranked-badge">—</span>`;
+      }
+
+      // Tier badges
+      const tiersCell = document.createElement("div");
+      tiersCell.className = "or-tiers-cell";
       GAMEMODES.forEach(gm => {
         const tier = bestTierOf(p.name, gm.id);
         const level = tier ? state.tierLevels?.[gm.id]?.[tier.id]?.[p.name] : null;
-        const badge = document.createElement("div");
-        badge.className = "gm-tier-badge";
-        badge.title = gm.label + (tier ? `: ${tier.label}${level ? ' ('+(level==='high'?'HT':'LT')+')' : ''}` : ': Unranked');
+        const wrap = document.createElement("div");
+        wrap.className = "tier-circle-wrap";
+        wrap.title = gm.label + (tier ? `: ${tier.label}${level ? ' ('+(level==='high'?'HT':'LT')+')' : ''}` : ': Unranked');
         if (tier) {
-          badge.innerHTML = `<span class="gtb-icon" style="background:${tier.color}22;color:${tier.color};border-color:${tier.color}55">${tier.id}</span>${level ? `<span class="gtb-level ${level === 'high' ? 'gtb-ht' : 'gtb-lt'}">${level === 'high' ? '▲' : '▼'}</span>` : ''}`;
+          wrap.innerHTML = `
+            <div class="tier-circle" style="background:${tier.color}22;border-color:${tier.color}88">
+              <span class="tc-id" style="color:${tier.color}">${level === 'high' ? 'H' : level === 'low' ? 'L' : ''}${tier.id.replace('T','')}</span>
+            </div>
+            <span class="tc-label" style="color:${tier.color}">${level === 'high' ? 'HT' : level === 'low' ? 'LT' : tier.id}${tier.id.replace('T','')}</span>
+          `;
         } else {
-          badge.innerHTML = `<span class="gtb-icon" style="color:#334;border-color:#252836">—</span>`;
+          wrap.innerHTML = `
+            <div class="tier-circle tier-circle-empty"><span class="tc-id tc-dash">—</span></div>
+            <span class="tc-label tc-empty">-</span>
+          `;
         }
-        tiersEl.appendChild(badge);
+        tiersCell.appendChild(wrap);
       });
+
+      row.appendChild(rankCell);
+      row.appendChild(playerCell);
+      row.appendChild(primaryCell);
+      row.appendChild(tiersCell);
+      content.appendChild(row);
     });
   }
 
-  function renderTabs() {
-    const bar = document.getElementById("tab-bar");
-    bar.innerHTML = "";
-
-    // Overall tab first
-    const overall = document.createElement("button");
-    overall.className = "tab-btn" + (activeGM === "overall" ? " active" : "");
-    overall.innerHTML = `<span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></span><span class="tab-label">Overall</span>`;
-    overall.onclick = () => { activeGM = "overall"; render(); };
-    bar.appendChild(overall);
-
-    GAMEMODES.forEach(gm => {
-      const btn = document.createElement("button");
-      btn.className = "tab-btn" + (gm.id === activeGM ? " active" : "");
-      btn.innerHTML = `<span class="tab-icon">${gmIcon(gm.id)}</span><span class="tab-label">${gm.label}</span>`;
-      btn.onclick = () => { activeGM = gm.id; render(); };
-      bar.appendChild(btn);
-    });
-  }
-
+  // ── Per-gamemode columns ───────────────────────────
   function renderColumns() {
-    const grid = document.getElementById("tier-grid");
-    grid.style.display = "grid";
-    grid.innerHTML = "";
+    const content = document.getElementById("main-content");
+    content.innerHTML = "";
+
+    const grid = document.createElement("div");
+    grid.id = "tier-grid";
+    content.appendChild(grid);
 
     TIERS.forEach(tier => {
       const players = state.tiers[activeGM]?.[tier.id] || [];
@@ -246,10 +246,7 @@
       header.className = "tier-col-header";
       header.style.background = tier.headerBg;
       header.style.borderBottom = `2px solid ${tier.color}`;
-      header.innerHTML = `
-        <span class="trophy-icon" style="color:${tier.headerText}">🏆</span>
-        <span class="tier-col-title" style="color:${tier.headerText}">${tier.label}</span>
-      `;
+      header.innerHTML = `<span class="trophy-icon" style="color:${tier.headerText}">🏆</span><span class="tier-col-title" style="color:${tier.headerText}">${tier.label}</span>`;
       col.appendChild(header);
 
       const list = document.createElement("div");
@@ -273,41 +270,36 @@
       grid.appendChild(col);
     });
 
+    // Unranked
     const inTiers = new Set(TIERS.flatMap(t => state.tiers[activeGM]?.[t.id] || []));
     const unranked = (state.players || []).filter(p => !inTiers.has(p));
+    const uSec = document.getElementById("unranked-section");
+    uSec.innerHTML = "";
 
     if (isAdmin || unranked.length > 0) {
       const uWrap = document.createElement("div");
       uWrap.className = "unranked-wrap";
       uWrap.innerHTML = `<div class="unranked-title">Unranked</div>`;
-
       const uList = document.createElement("div");
       uList.className = "unranked-list" + (isAdmin ? " admin-mode" : "");
       uList.dataset.tier = "unranked";
-
       if (unranked.length === 0) {
         const e = document.createElement("div");
-        e.className = "col-empty";
-        e.textContent = "All players are ranked";
+        e.className = "col-empty"; e.textContent = "All players are ranked";
         uList.appendChild(e);
       } else {
         unranked.forEach(p => uList.appendChild(makeRow(p, "unranked", null)));
       }
-
       if (isAdmin) setupDrop(uList, "unranked");
       uWrap.appendChild(uList);
-      document.getElementById("unranked-section").innerHTML = "";
-      document.getElementById("unranked-section").appendChild(uWrap);
-    } else {
-      document.getElementById("unranked-section").innerHTML = "";
+      uSec.appendChild(uWrap);
     }
   }
 
   function makeRow(name, srcTier, tierLevel) {
     const row = document.createElement("div");
     row.className = "player-row";
-    row.dataset.playerName = name;
-    row.dataset.tier = srcTier;
+    row.dataset.playerName = name; row.dataset.tier = srcTier;
 
     const head = document.createElement("img");
     head.className = "mc-head";
@@ -315,45 +307,27 @@
     head.onerror = () => head.src = "https://minotar.net/avatar/MHF_Steve/28";
 
     const nm = document.createElement("span");
-    nm.className = "player-name";
-    nm.textContent = name;
+    nm.className = "player-name"; nm.textContent = name;
 
     const indicator = document.createElement("span");
     indicator.className = "tier-indicator";
-    if (tierLevel === 'high') {
-      indicator.innerHTML = '▲';
-      indicator.classList.add('high-tier');
-      indicator.title = 'High Tier';
-    } else if (tierLevel === 'low') {
-      indicator.innerHTML = '▼';
-      indicator.classList.add('low-tier');
-      indicator.title = 'Low Tier';
-    }
+    if (tierLevel === 'high') { indicator.innerHTML = '▲'; indicator.classList.add('high-tier'); indicator.title = 'High Tier'; }
+    else if (tierLevel === 'low') { indicator.innerHTML = '▼'; indicator.classList.add('low-tier'); indicator.title = 'Low Tier'; }
 
-    row.appendChild(head);
-    row.appendChild(nm);
-    row.appendChild(indicator);
+    row.appendChild(head); row.appendChild(nm); row.appendChild(indicator);
 
     if (isAdmin) {
       row.draggable = true;
-      row.addEventListener("dragstart", e => {
-        dragPlayer = name; dragSrc = srcTier;
-        setTimeout(() => row.classList.add("dragging"), 0);
-        e.dataTransfer.effectAllowed = "move";
-      });
+      row.addEventListener("dragstart", e => { dragPlayer = name; dragSrc = srcTier; setTimeout(() => row.classList.add("dragging"), 0); e.dataTransfer.effectAllowed = "move"; });
       row.addEventListener("dragend", () => row.classList.remove("dragging"));
-      
       row.addEventListener("contextmenu", e => {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         if (srcTier === "unranked") {
           if (confirm(`Remove "${name}" from all tier lists?`)) {
             state.players = state.players.filter(p => p !== name);
             GAMEMODES.forEach(gm => TIERS.forEach(t => {
               state.tiers[gm.id][t.id] = state.tiers[gm.id][t.id].filter(p => p !== name);
-              if (state.tierLevels[gm.id][t.id][name]) {
-                delete state.tierLevels[gm.id][t.id][name];
-              }
+              if (state.tierLevels[gm.id][t.id][name]) delete state.tierLevels[gm.id][t.id][name];
             }));
             save();
           }
@@ -366,71 +340,57 @@
     return row;
   }
 
-  function showContextMenu(x, y, currentLevel) {
-    const menu = document.getElementById("context-menu");
-    const htOption = document.getElementById("ctx-high-tier");
-    const ltOption = document.getElementById("ctx-low-tier");
-    const clearOption = document.getElementById("ctx-clear-tier");
-    
-    htOption.classList.toggle('active', currentLevel === 'high');
-    ltOption.classList.toggle('active', currentLevel === 'low');
-    clearOption.style.display = currentLevel ? 'block' : 'none';
-    
-    menu.style.display = 'block';
-    menu.style.left = x + 'px';
-    menu.style.top = y + 'px';
-  }
-
-  function hideContextMenu() {
-    document.getElementById("context-menu").style.display = 'none';
-    contextMenuTarget = null;
-  }
-
-  window.setTierLevel = function(level) {
-    if (!contextMenuTarget) return;
-    const { name, tier } = contextMenuTarget;
-    
-    if (!state.tierLevels[activeGM]) state.tierLevels[activeGM] = {};
-    if (!state.tierLevels[activeGM][tier]) state.tierLevels[activeGM][tier] = {};
-    
-    if (level) {
-      state.tierLevels[activeGM][tier][name] = level;
-    } else {
-      delete state.tierLevels[activeGM][tier][name];
-    }
-    
-    save();
-    hideContextMenu();
-  };
-
   function setupDrop(el, targetTier) {
-    el.addEventListener("dragover",  e => { e.preventDefault(); el.classList.add("drop-over"); });
+    el.addEventListener("dragover", e => { e.preventDefault(); el.classList.add("drop-over"); });
     el.addEventListener("dragleave", () => el.classList.remove("drop-over"));
     el.addEventListener("drop", e => {
       e.preventDefault(); el.classList.remove("drop-over");
       if (!dragPlayer || !isAdmin) return;
-      if (dragSrc !== "unranked")
-        state.tiers[activeGM][dragSrc] = state.tiers[activeGM][dragSrc].filter(p => p !== dragPlayer);
+      if (dragSrc !== "unranked") state.tiers[activeGM][dragSrc] = state.tiers[activeGM][dragSrc].filter(p => p !== dragPlayer);
       if (targetTier !== "unranked" && !state.tiers[activeGM][targetTier].includes(dragPlayer)) {
         state.tiers[activeGM][targetTier].push(dragPlayer);
-        if (dragSrc !== "unranked" && dragSrc !== targetTier) {
-          if (state.tierLevels[activeGM][dragSrc]?.[dragPlayer]) {
-            delete state.tierLevels[activeGM][dragSrc][dragPlayer];
-          }
-        }
+        if (dragSrc !== "unranked" && dragSrc !== targetTier && state.tierLevels[activeGM][dragSrc]?.[dragPlayer])
+          delete state.tierLevels[activeGM][dragSrc][dragPlayer];
       }
       save(); dragPlayer = null; dragSrc = null;
     });
   }
 
+  function showContextMenu(x, y, currentLevel) {
+    const menu = document.getElementById("context-menu");
+    document.getElementById("ctx-high-tier").classList.toggle('active', currentLevel === 'high');
+    document.getElementById("ctx-low-tier").classList.toggle('active', currentLevel === 'low');
+    const clearDiv = document.getElementById("ctx-clear-tier");
+    const clearBtn = document.getElementById("ctx-clear-btn");
+    clearDiv.style.display = currentLevel ? 'block' : 'none';
+    clearBtn.style.display = currentLevel ? 'flex' : 'none';
+    menu.style.display = 'flex'; menu.style.left = x + 'px'; menu.style.top = y + 'px';
+  }
+
+  function hideContextMenu() { document.getElementById("context-menu").style.display = 'none'; contextMenuTarget = null; }
+
+  window.setTierLevel = function(level) {
+    if (!contextMenuTarget) return;
+    const { name, tier } = contextMenuTarget;
+    if (!state.tierLevels[activeGM]) state.tierLevels[activeGM] = {};
+    if (!state.tierLevels[activeGM][tier]) state.tierLevels[activeGM][tier] = {};
+    if (level) state.tierLevels[activeGM][tier][name] = level;
+    else delete state.tierLevels[activeGM][tier][name];
+    save(); hideContextMenu();
+  };
+
+  // ── Icons ──────────────────────────────────────────
+  function starIcon() {
+    return `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
+  }
   function gmIcon(id) {
     const m = {
-      crystal: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polygon points="12,2 22,9 18,21 6,21 2,9"/><line x1="12" y1="2" x2="12" y2="21"/><line x1="2" y1="9" x2="22" y2="9"/></svg>`,
-      sword:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="12" y1="2" x2="12" y2="18"/><path d="M8 6l4-4 4 4"/><path d="M9 18h6"/><path d="M10 21h4"/></svg>`,
-      smp:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>`,
-      uhc:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
-      mace:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="9" y="1" width="6" height="10" rx="2"/><rect x="5" y="3" width="14" height="6" rx="2"/><line x1="12" y1="11" x2="12" y2="23"/></svg>`,
-      axe:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 12L5 21"/><path d="M14.5 4.5C12 2 8 2.5 6 5c-1.5 2-1 5 .5 7l8-8c-1-1.5-1.5-3-1-4.5z"/><path d="M14.5 4.5c1.5-1 3.5-.5 4.5 1 1.5 2 1 5-.5 7l-4-4"/></svg>`,
+      crystal:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polygon points="12,2 22,9 18,21 6,21 2,9"/><line x1="12" y1="2" x2="12" y2="21"/><line x1="2" y1="9" x2="22" y2="9"/></svg>`,
+      sword:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="12" y1="2" x2="12" y2="18"/><path d="M8 6l4-4 4 4"/><path d="M9 18h6"/><path d="M10 21h4"/></svg>`,
+      smp:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>`,
+      uhc:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+      mace:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="9" y="1" width="6" height="10" rx="2"/><rect x="5" y="3" width="14" height="6" rx="2"/><line x1="12" y1="11" x2="12" y2="23"/></svg>`,
+      axe:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 12L5 21"/><path d="M14.5 4.5C12 2 8 2.5 6 5c-1.5 2-1 5 .5 7l8-8c-1-1.5-1.5-3-1-4.5z"/><path d="M14.5 4.5c1.5-1 3.5-.5 4.5 1 1.5 2 1 5-.5 7l-4-4"/></svg>`,
     };
     return m[id] || m.sword;
   }
@@ -441,11 +401,8 @@
       document.getElementById("login-modal").style.display = "none";
       document.getElementById("admin-toolbar").style.display = "flex";
       document.getElementById("admin-badge").style.display = "inline-flex";
-      toast("Admin mode enabled ✓");
-      render();
-    } else {
-      document.getElementById("pw-error").style.display = "block";
-    }
+      toast("Admin mode enabled ✓"); render();
+    } else { document.getElementById("pw-error").style.display = "block"; }
   };
   window.openLogin  = () => { document.getElementById("login-modal").style.display = "flex"; setTimeout(() => document.getElementById("pw-input").focus(), 50); };
   window.closeLogin = () => document.getElementById("login-modal").style.display = "none";
@@ -468,7 +425,7 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("pw-input").addEventListener("keydown", e => { if (e.key === "Enter") window.tryLogin(); });
-    document.addEventListener("click", (e) => {
+    document.addEventListener("click", e => {
       const menu = document.getElementById("context-menu");
       if (!menu.contains(e.target)) hideContextMenu();
     });
@@ -477,24 +434,21 @@
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:      #13151c;
-  --topbar:  #0e1018;
-  --surface: #1a1d28;
-  --col-bg:  #181b26;
-  --row-bg:  #1e2230;
-  --row-hover: #252a3a;
-  --border:  #252836;
-  --text:    #dde0ee;
-  --muted:   #556;
-  --accent:  #5865f2;
+  --bg:        #0f1117;
+  --card:      #181c27;
+  --card2:     #1e2235;
+  --row-bg:    #1a1e2e;
+  --row-hover: #222840;
+  --border:    #2a2f45;
+  --text:      #dde0ee;
+  --muted:     #5a6080;
+  --accent:    #5865f2;
 }
 
 html, body { height: 100%; }
-
 body {
   background: var(--bg);
   color: var(--text);
@@ -505,77 +459,40 @@ body {
   flex-direction: column;
 }
 
-/* ── Top nav bar ── */
+/* ── Top nav ──────────────────────────── */
 .top-nav {
-  background: var(--topbar);
+  height: 56px;
+  background: var(--card);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  gap: 0;
-  padding: 0 16px;
-  overflow-x: auto;
+  padding: 0 20px;
+  gap: 16px;
   flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 50;
 }
-
 .site-logo {
-  font-size: 0.9rem;
-  font-weight: 700;
+  font-size: 1rem;
+  font-weight: 800;
   color: #fff;
   letter-spacing: 1px;
-  padding: 0 16px 0 4px;
-  border-right: 1px solid var(--border);
-  margin-right: 8px;
-  white-space: nowrap;
   flex-shrink: 0;
+  margin-right: 8px;
 }
-
-#tab-bar {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  flex: 1;
-}
-
-.tab-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 10px 20px;
-  background: transparent;
-  border: none;
-  border-bottom: 3px solid transparent;
-  color: #667;
-  font-family: 'Inter', sans-serif;
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: color .12s, border-color .12s, background .12s;
-  white-space: nowrap;
-  letter-spacing: 0.3px;
-}
-.tab-btn:hover { color: var(--text); background: rgba(255,255,255,0.03); }
-.tab-btn.active { color: #fff; border-bottom-color: #fff; }
-
-.tab-icon { width: 20px; height: 20px; display: flex; align-items: center; }
-.tab-icon svg { width: 100%; height: 100%; }
-.tab-label { font-size: 0.72rem; }
-
 .nav-right {
   margin-left: auto;
-  flex-shrink: 0;
-  padding-left: 16px;
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
 }
-
 .admin-btn {
   background: transparent;
   border: 1px solid var(--border);
-  color: #556;
-  border-radius: 5px;
+  color: var(--muted);
+  border-radius: 6px;
   padding: 5px 12px;
   font-size: 0.75rem;
   font-weight: 500;
@@ -584,424 +501,352 @@ body {
   transition: color .1s, border-color .1s;
 }
 .admin-btn:hover { color: var(--text); border-color: #445; }
-
 #admin-badge {
-  display: none;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.68rem;
-  font-weight: 600;
-  color: #4cde82;
+  display: none; align-items: center; gap: 4px;
+  font-size: 0.68rem; font-weight: 600; color: #4cde82;
 }
 .badge-dot { width: 5px; height: 5px; border-radius: 50%; background: #4cde82; }
 
-/* ── Admin toolbar ── */
+/* ── Admin toolbar ───────────────────── */
 #admin-toolbar {
-  display: none;
-  align-items: center;
-  gap: 8px;
+  display: none; align-items: center; gap: 8px;
   padding: 8px 20px;
-  background: rgba(88,101,242,0.06);
-  border-bottom: 1px solid rgba(88,101,242,0.15);
-  flex-wrap: wrap;
-  flex-shrink: 0;
+  background: rgba(88,101,242,0.07);
+  border-bottom: 1px solid rgba(88,101,242,0.18);
+  flex-wrap: wrap; flex-shrink: 0;
 }
-#admin-toolbar > .lbl {
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 1px;
-  color: var(--accent);
-  text-transform: uppercase;
-}
+#admin-toolbar > .lbl { font-size: 0.68rem; font-weight: 700; letter-spacing: 1px; color: var(--accent); text-transform: uppercase; }
 #player-input {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 6px 10px;
-  color: var(--text);
-  font-family: 'Inter', sans-serif;
-  font-size: 0.83rem;
-  outline: none;
-  width: 200px;
+  background: var(--card2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 10px;
+  color: var(--text); font-family: 'Inter', sans-serif;
+  font-size: 0.83rem; outline: none; width: 200px;
 }
 #player-input:focus { border-color: var(--accent); }
 .btn-add {
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  border-radius: 5px;
-  padding: 6px 14px;
-  font-family: 'Inter', sans-serif;
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity .12s;
+  background: var(--accent); color: #fff; border: none;
+  border-radius: 6px; padding: 6px 14px;
+  font-family: 'Inter', sans-serif; font-size: 0.82rem; font-weight: 600;
+  cursor: pointer; transition: opacity .12s;
 }
 .btn-add:hover { opacity: 0.85; }
 .admin-hint { font-size: 0.7rem; color: var(--muted); margin-left: auto; }
 
-/* ── Main content ── */
-.main-content {
+/* ── Page layout ─────────────────────── */
+.page-wrap {
   flex: 1;
-  padding: 20px;
-  overflow-y: auto;
+  max-width: 1300px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 32px 20px 60px;
 }
 
-/* ── Tier grid (columns) ── */
+/* ── Tabs (mctiers style pill tabs) ──── */
+.tabs-wrap {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 0;
+  margin-bottom: 0;
+  position: relative;
+}
+
+#tab-bar {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.tab-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 8px 20px 10px;
+  background: var(--card);
+  border: 2px solid var(--border);
+  border-bottom: none;
+  border-radius: 20px 20px 0 0;
+  color: var(--muted);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color .12s, background .12s, border-color .12s;
+  white-space: nowrap;
+  position: relative;
+  bottom: -2px;
+}
+.tab-btn:hover { color: var(--text); background: var(--card2); }
+.tab-btn.active {
+  color: #fff;
+  background: var(--card2);
+  border-color: var(--border);
+}
+.tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--card2);
+}
+.tab-icon { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; }
+.tab-icon svg { width: 100%; height: 100%; }
+.tab-btn.active .tab-icon { color: #fff; }
+
+/* ── Main card ───────────────────────── */
+.main-card {
+  background: var(--card2);
+  border: 2px solid var(--border);
+  border-radius: 0 16px 16px 16px;
+  padding: 20px;
+  min-height: 400px;
+}
+
+/* ── Tier grid (columns) ─────────────── */
 #tier-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 8px;
-  min-width: 700px;
 }
 
 .tier-col {
-  background: var(--col-bg);
-  border-radius: 8px;
+  background: var(--row-bg);
+  border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--border);
 }
-
 .tier-col-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px 10px;
-  font-weight: 700;
-  font-size: 0.95rem;
-  letter-spacing: 0.3px;
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px; padding: 14px 10px;
+  font-weight: 700; font-size: 0.95rem;
 }
+.trophy-icon { font-size: 1.1rem; line-height: 1; }
+.tier-col-title { font-size: 0.92rem; font-weight: 700; }
 
-.trophy-icon { font-size: 1rem; line-height: 1; }
-.tier-col-title { font-size: 0.9rem; font-weight: 700; }
-
-/* ── Player rows ── */
-.tier-col-list {
-  display: flex;
-  flex-direction: column;
-  min-height: 60px;
-}
-
+/* ── Player rows ─────────────────────── */
+.tier-col-list { display: flex; flex-direction: column; min-height: 60px; }
 .tier-col-list.drop-over { outline: 2px dashed var(--accent); outline-offset: -2px; }
 
 .player-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: flex; align-items: center; gap: 8px;
   padding: 7px 10px;
   background: var(--row-bg);
   border-top: 1px solid var(--border);
-  cursor: default;
-  transition: background .1s;
-  position: relative;
+  cursor: default; transition: background .1s; position: relative;
 }
 .player-row:first-child { border-top: none; }
 .tier-col-list.admin-mode .player-row { cursor: grab; }
 .player-row:hover { background: var(--row-hover); }
 .player-row.dragging { opacity: 0.25; }
 
-.mc-head {
-  width: 24px; height: 24px;
-  border-radius: 3px;
-  image-rendering: pixelated;
-  flex-shrink: 0;
-}
+.mc-head { width: 24px; height: 24px; border-radius: 3px; image-rendering: pixelated; flex-shrink: 0; }
+.player-name { flex: 1; font-size: 0.85rem; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.player-name {
-  flex: 1;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+.tier-indicator { font-size: 0.75rem; font-weight: 700; margin-left: 4px; flex-shrink: 0; width: 16px; text-align: center; }
+.tier-indicator.high-tier { color: #4ade80; }
+.tier-indicator.low-tier  { color: #f87171; }
 
-/* ── Tier Level Indicators ── */
-.tier-indicator {
-  font-size: 0.75rem;
-  font-weight: 700;
-  margin-left: 4px;
-  flex-shrink: 0;
-  width: 16px;
-  text-align: center;
-}
+.col-empty { padding: 14px 10px; font-size: 0.75rem; color: var(--muted); font-style: italic; text-align: center; }
 
-.tier-indicator.high-tier {
-  color: #4ade80;
-  text-shadow: 0 0 8px rgba(74, 222, 128, 0.4);
-}
-
-.tier-indicator.low-tier {
-  color: #f87171;
-  text-shadow: 0 0 8px rgba(248, 113, 113, 0.4);
-}
-
-.row-arrow {
-  font-size: 0.6rem;
-  color: #445;
-  letter-spacing: -1px;
-  flex-shrink: 0;
-}
-
-.col-empty {
-  padding: 14px 10px;
-  font-size: 0.75rem;
-  color: var(--muted);
-  font-style: italic;
-  text-align: center;
-}
-
-/* ── Unranked ── */
+/* ── Unranked ────────────────────────── */
 #unranked-section { margin-top: 14px; }
-
-.unranked-wrap {
-  background: var(--col-bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-.unranked-title {
-  padding: 8px 14px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  color: var(--muted);
-  border-bottom: 1px solid var(--border);
-}
-.unranked-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 10px 12px;
-  min-height: 50px;
-}
-.unranked-list .player-row {
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  width: auto;
-  flex: none;
-}
+.unranked-wrap { background: var(--row-bg); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.unranked-title { padding: 8px 14px; font-size: 0.72rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); }
+.unranked-list { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; min-height: 50px; }
+.unranked-list .player-row { border: 1px solid var(--border); border-radius: 5px; width: auto; flex: none; }
 .unranked-list .player-row:first-child { border-top: 1px solid var(--border); }
-.unranked-list.drop-over { outline: 2px dashed var(--accent); outline-offset: -2px; border-radius: 6px; }
+.unranked-list.drop-over { outline: 2px dashed var(--accent); outline-offset: -2px; border-radius: 8px; }
 
-/* ── Context Menu ── */
-#context-menu {
-  position: fixed;
-  background: #1e2230;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px;
-  min-width: 160px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-  z-index: 1000;
-  display: none;
-  flex-direction: column;
-  gap: 2px;
+/* ── Overall leaderboard ─────────────── */
+.empty-state { padding: 60px; text-align: center; color: var(--muted); font-style: italic; }
+
+.overall-header {
+  display: grid;
+  grid-template-columns: 220px 1fr 120px 1fr;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.68rem; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 8px;
 }
+.oh-primary { text-align: center; }
+.oh-tiers { text-align: center; }
 
-.context-menu-item {
-  padding: 8px 12px;
-  cursor: pointer;
-  color: var(--text);
-  font-size: 0.8rem;
-  font-weight: 500;
-  border-radius: 4px;
-  transition: background 0.15s;
-  display: flex;
+.overall-row {
+  display: grid;
+  grid-template-columns: 220px 1fr 120px 1fr;
+  gap: 12px;
   align-items: center;
-  gap: 8px;
-}
-
-.context-menu-item:hover {
-  background: var(--row-hover);
-}
-
-.context-menu-item.active {
-  background: rgba(88, 101, 242, 0.2);
-  color: #fff;
-}
-
-.context-menu-item .indicator-icon {
-  font-size: 0.7rem;
-  width: 16px;
-  text-align: center;
-}
-
-.context-menu-item.high-option .indicator-icon {
-  color: #4ade80;
-}
-
-.context-menu-item.low-option .indicator-icon {
-  color: #f87171;
-}
-
-.context-menu-divider {
-  height: 1px;
-  background: var(--border);
-  margin: 4px 0;
-}
-
-/* ── Modal ── */
-#login-modal {
-  display: none;
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,0.75);
-  z-index: 300;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(5px);
-}
-.modal-box {
-  background: #12141e;
+  margin-bottom: 6px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 26px;
-  width: 310px;
+  overflow: hidden;
+  background: var(--row-bg);
+  transition: background .12s;
+}
+.overall-row:hover { background: var(--row-hover); }
+
+/* Rank cell — colored left panel like mctiers */
+.or-rank-cell {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  min-height: 64px;
+  position: relative;
+  overflow: hidden;
+}
+.rank-cell-1 { background: linear-gradient(135deg, #7a5c00, #b8900a); }
+.rank-cell-2 { background: linear-gradient(135deg, #2a3040, #424a60); }
+.rank-cell-3 { background: linear-gradient(135deg, #4a2800, #7a4a18); }
+.rank-cell-other { background: var(--card); }
+
+.rank-num {
+  font-size: 1.3rem; font-weight: 800;
+  color: rgba(255,255,255,0.9);
+  z-index: 1; flex-shrink: 0;
+  min-width: 36px;
+}
+.rank-cell-other .rank-num { color: var(--muted); font-size: 1.1rem; }
+
+.mc-skin-bg {
+  width: 44px; height: 44px;
+  border-radius: 4px;
+  image-rendering: pixelated;
+  z-index: 1;
+  flex-shrink: 0;
+}
+.rank-cell-other .mc-skin-bg { opacity: 0.8; width: 32px; height: 32px; }
+
+/* Player info */
+.or-player-cell {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 10px 0; min-width: 0;
+}
+.or-name { font-size: 1rem; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.or-title { font-size: 0.78rem; font-weight: 600; }
+.or-pts { color: var(--muted); font-weight: 400; font-size: 0.73rem; }
+
+/* Primary badge */
+.or-primary-cell { display: flex; align-items: center; justify-content: center; }
+.primary-badge {
+  font-size: 0.72rem; font-weight: 700;
+  padding: 4px 10px; border-radius: 6px;
+  border: 1px solid; white-space: nowrap;
+}
+.unranked-badge { color: var(--muted); background: transparent; border-color: var(--border); }
+
+/* Tier circles (like mctiers circular badge + label underneath) */
+.or-tiers-cell {
+  display: flex; gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 8px 12px 8px 0;
+}
+.tier-circle-wrap {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  cursor: default;
+}
+.tier-circle {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  border: 2px solid;
+  display: flex; align-items: center; justify-content: center;
+}
+.tier-circle-empty { background: #1a1d2a; border-color: var(--border); }
+.tc-id { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.3px; }
+.tc-dash { color: var(--muted); }
+.tc-label { font-size: 0.55rem; font-weight: 700; letter-spacing: 0.3px; }
+.tc-empty { color: var(--muted); }
+
+/* ── Context Menu ────────────────────── */
+#context-menu {
+  position: fixed; background: #1e2230; border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px; min-width: 160px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 1000;
+  display: none; flex-direction: column; gap: 2px;
+}
+.context-menu-item {
+  padding: 8px 12px; cursor: pointer; color: var(--text);
+  font-size: 0.8rem; font-weight: 500; border-radius: 4px;
+  transition: background 0.15s; display: flex; align-items: center; gap: 8px;
+}
+.context-menu-item:hover { background: var(--row-hover); }
+.context-menu-item.active { background: rgba(88,101,242,0.2); color: #fff; }
+.context-menu-item .indicator-icon { font-size: 0.7rem; width: 16px; text-align: center; }
+.context-menu-item.high-option .indicator-icon { color: #4ade80; }
+.context-menu-item.low-option  .indicator-icon { color: #f87171; }
+.context-menu-divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+/* ── Modal ───────────────────────────── */
+#login-modal {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.75); z-index: 300;
+  align-items: center; justify-content: center; backdrop-filter: blur(5px);
+}
+.modal-box {
+  background: #12141e; border: 1px solid var(--border);
+  border-radius: 12px; padding: 28px; width: 320px;
+  display: flex; flex-direction: column; gap: 12px;
   box-shadow: 0 24px 64px rgba(0,0,0,0.7);
 }
 .modal-box h2 { font-size: 1rem; font-weight: 700; color: #fff; }
-.modal-box p  { font-size: 0.78rem; color: #556; line-height: 1.5; }
+.modal-box p  { font-size: 0.78rem; color: var(--muted); line-height: 1.5; }
 .modal-box input {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px 11px;
-  color: var(--text);
-  font-family: 'Inter', sans-serif;
-  font-size: 0.88rem;
-  outline: none;
-  width: 100%;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 11px; color: var(--text);
+  font-family: 'Inter', sans-serif; font-size: 0.88rem; outline: none; width: 100%;
 }
 .modal-box input:focus { border-color: var(--accent); }
 #pw-error { display: none; font-size: 0.75rem; color: #e05050; }
 .modal-btns { display: flex; gap: 7px; }
 .modal-btns button {
-  flex: 1; padding: 8px;
-  border-radius: 6px;
-  font-family: 'Inter', sans-serif;
-  font-size: 0.83rem;
-  font-weight: 600;
-  cursor: pointer;
-  border: none;
+  flex: 1; padding: 8px; border-radius: 6px;
+  font-family: 'Inter', sans-serif; font-size: 0.83rem; font-weight: 600;
+  cursor: pointer; border: none;
 }
 .btn-confirm { background: var(--accent); color: #fff; }
 .btn-confirm:hover { opacity: 0.85; }
-.btn-cancel { background: #1e2130; color: #556; border: 1px solid var(--border) !important; }
+.btn-cancel { background: #1e2130; color: var(--muted); border: 1px solid var(--border) !important; }
 .btn-cancel:hover { color: var(--text); }
 
-/* ── Toast ── */
+/* ── Toast ───────────────────────────── */
 .toast {
-  position: fixed;
-  bottom: 20px; right: 20px;
-  background: #22aa55;
-  color: #fff;
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 9px 16px;
-  border-radius: 6px;
-  opacity: 0;
-  transform: translateY(6px);
-  transition: opacity .18s, transform .18s;
-  z-index: 999;
-  pointer-events: none;
+  position: fixed; bottom: 20px; right: 20px;
+  background: #22aa55; color: #fff;
+  font-size: 0.8rem; font-weight: 600; padding: 9px 16px; border-radius: 6px;
+  opacity: 0; transform: translateY(6px);
+  transition: opacity .18s, transform .18s; z-index: 999; pointer-events: none;
 }
 .toast.show { opacity: 1; transform: translateY(0); }
 .toast.err  { background: #c0392b; }
 
-/* ── Responsive ── */
-@media (max-width: 800px) {
-  #tier-grid { grid-template-columns: repeat(3, 1fr); }
-}
-@media (max-width: 540px) {
-  #tier-grid { grid-template-columns: repeat(2, 1fr); }
-  .tab-btn { padding: 10px 12px; }
-}
-/* ── Overall leaderboard ── */
-.overall-header {
-  display: grid;
-  grid-template-columns: 52px 1fr 120px auto;
-  gap: 12px;
-  padding: 7px 16px;
-  border-bottom: 1px solid var(--border);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 1.2px;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-bottom: 4px;
-}
-.overall-row {
-  display: grid;
-  grid-template-columns: 52px 1fr 120px auto;
-  gap: 12px;
-  align-items: center;
-  padding: 11px 16px;
-  background: var(--col-bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  margin-bottom: 4px;
-  transition: background .1s;
-}
-.overall-row:hover { background: var(--row-hover); }
-.or-rank { display: flex; align-items: center; }
-.rank-num { font-size: 1.05rem; font-weight: 700; }
-.rank-1 { color: #f5c518; }
-.rank-2 { color: #b0c4de; }
-.rank-3 { color: #c8824b; }
-.rank-other { color: var(--muted); }
-.or-player { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.mc-head-lg { width: 38px; height: 38px; border-radius: 4px; image-rendering: pixelated; flex-shrink: 0; background: var(--border); }
-.or-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.or-name { font-size: 0.98rem; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.or-title { font-size: 0.76rem; font-weight: 600; }
-.or-pts { color: var(--muted); font-weight: 400; font-size: 0.73rem; }
-.or-primary { display: flex; align-items: center; }
-.primary-badge {
-  font-size: 0.72rem; font-weight: 700;
-  padding: 3px 9px; border-radius: 5px;
-  border: 1px solid; white-space: nowrap;
-}
-.unranked-badge { color: var(--muted); background: transparent; border-color: var(--border); }
-.or-tiers { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; }
-.gm-tier-badge { display: flex; align-items: center; gap: 2px; }
-.gtb-icon {
-  font-size: 0.6rem; font-weight: 700; letter-spacing: 0.4px;
-  padding: 2px 5px; border-radius: 4px; border: 1px solid;
-  white-space: nowrap;
-}
-.gtb-level { font-size: 0.6rem; font-weight: 700; }
-.gtb-ht { color: #4ade80; }
-.gtb-lt { color: #f87171; }
-
+/* ── Responsive ──────────────────────── */
 @media (max-width: 900px) {
-  .overall-header, .overall-row { grid-template-columns: 44px 1fr 90px auto; gap: 8px; padding: 10px 12px; }
+  #tier-grid { grid-template-columns: repeat(3, 1fr); }
+  .overall-header, .overall-row { grid-template-columns: 160px 1fr 90px auto; }
 }
 @media (max-width: 640px) {
-  .overall-header, .overall-row { grid-template-columns: 36px 1fr auto; }
-  .oh-primary, .or-primary { display: none; }
+  #tier-grid { grid-template-columns: repeat(2, 1fr); }
+  .overall-header, .overall-row { grid-template-columns: 120px 1fr auto; }
+  .oh-primary, .or-primary-cell { display: none; }
+  .tab-btn { padding: 7px 12px 9px; }
 }
-
 </style>
 </head>
 <body>
 
-<!-- Top nav -->
 <nav class="top-nav">
   <div class="site-logo">⚔ PVPTIERS</div>
-  <div id="tab-bar"></div>
   <div class="nav-right">
     <span id="admin-badge"><span class="badge-dot"></span> ADMIN</span>
     <button class="admin-btn" onclick="openLogin()">⚙ Admin</button>
   </div>
 </nav>
 
-<!-- Admin toolbar -->
 <div id="admin-toolbar">
   <span class="lbl">● Admin</span>
   <input type="text" id="player-input" placeholder="Minecraft username..." onkeydown="handleKey(event)" maxlength="24">
@@ -1009,26 +854,28 @@ body {
   <span class="admin-hint">Drag to rank · Right-click player for HT/LT · Right-click unranked to remove</span>
 </div>
 
-<!-- Main -->
-<div class="main-content">
-  <div id="tier-grid"></div>
-  <div id="unranked-section"></div>
+<div class="page-wrap">
+  <!-- Tabs -->
+  <div id="tab-bar"></div>
+
+  <!-- Main card -->
+  <div class="main-card">
+    <div id="main-content"></div>
+    <div id="unranked-section"></div>
+  </div>
 </div>
 
 <!-- Context Menu -->
 <div id="context-menu">
   <div class="context-menu-item high-option" id="ctx-high-tier" onclick="setTierLevel('high')">
-    <span class="indicator-icon">▲</span>
-    <span>Make High Tier (HT)</span>
+    <span class="indicator-icon">▲</span><span>Make High Tier (HT)</span>
   </div>
   <div class="context-menu-item low-option" id="ctx-low-tier" onclick="setTierLevel('low')">
-    <span class="indicator-icon">▼</span>
-    <span>Make Low Tier (LT)</span>
+    <span class="indicator-icon">▼</span><span>Make Low Tier (LT)</span>
   </div>
-  <div class="context-menu-divider" id="ctx-clear-tier" style="display: none;"></div>
-  <div class="context-menu-item" id="ctx-clear-btn" onclick="setTierLevel(null)" style="display: none; color: #888;">
-    <span class="indicator-icon">—</span>
-    <span>Clear Designation</span>
+  <div class="context-menu-divider" id="ctx-clear-tier" style="display:none"></div>
+  <div class="context-menu-item" id="ctx-clear-btn" onclick="setTierLevel(null)" style="display:none;color:#888">
+    <span class="indicator-icon">—</span><span>Clear Designation</span>
   </div>
 </div>
 
