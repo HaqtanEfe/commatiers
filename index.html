@@ -126,11 +126,11 @@
     const bar = document.getElementById("tab-bar");
     bar.innerHTML = "";
 
-    const tabs = [{ id: "overall", label: "Overall", icon: starIcon() }, ...GAMEMODES.map(g => ({ id: g.id, label: g.label, icon: gmIcon(g.id) }))];
+    const tabs = [{ id: "overall", label: "Overall" }, ...GAMEMODES.map(g => ({ id: g.id, label: g.label }))];
     tabs.forEach(tab => {
       const btn = document.createElement("button");
       btn.className = "tab-btn" + (tab.id === activeGM ? " active" : "");
-      btn.innerHTML = `<span class="tab-icon">${tab.icon}</span><strong>${tab.label}</strong>`;
+      btn.innerHTML = `<span class="tab-icon">${tabIcon(tab.id)}</span><strong>${tab.label}</strong>`;
       btn.onclick = () => { activeGM = tab.id; render(); };
       bar.appendChild(btn);
     });
@@ -202,19 +202,18 @@
         const wrap = document.createElement("div");
         wrap.className = "tier-circle-wrap";
         wrap.title = gm.label + (tier ? `: ${tier.label}${level ? ' ('+(level==='high'?'HT':'LT')+')' : ''}` : ': Unranked');
-        if (tier) {
-          wrap.innerHTML = `
-            <div class="tier-circle" style="background:${tier.color}22;border-color:${tier.color}88">
-              <span class="tc-id" style="color:${tier.color}">${level === 'high' ? 'H' : level === 'low' ? 'L' : ''}${tier.id.replace('T','')}</span>
-            </div>
-            <span class="tc-label" style="color:${tier.color}">${level === 'high' ? 'HT' : level === 'low' ? 'LT' : tier.id}${tier.id.replace('T','')}</span>
-          `;
-        } else {
-          wrap.innerHTML = `
-            <div class="tier-circle tier-circle-empty"><span class="tc-id tc-dash">—</span></div>
-            <span class="tc-label tc-empty">-</span>
-          `;
-        }
+        const tierNum = tier ? tier.id.replace('T','') : '';
+        const htlt = level === 'high' ? 'HT' : level === 'low' ? 'LT' : '';
+        const badgeLabel = tier ? (htlt ? htlt + tierNum : tier.id) : '—';
+        const borderCol = tier ? tier.color + 'aa' : '#2a2f45';
+        const bgCol = tier ? tier.color + '22' : '#181c27';
+        const textCol = tier ? tier.color : '#3a4060';
+        wrap.innerHTML = `
+          <div class="tier-circle" style="background:${bgCol};border-color:${borderCol}">
+            <span class="tc-icon">${tabIcon(gm.id)}</span>
+          </div>
+          <span class="tc-label" style="color:${textCol}">${badgeLabel}</span>
+        `;
         tiersCell.appendChild(wrap);
       });
 
@@ -222,6 +221,21 @@
       row.appendChild(playerCell);
       row.appendChild(primaryCell);
       row.appendChild(tiersCell);
+
+      // Right-click to copy player summary
+      row.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        const lines = [`${p.name} — ${title.label} (${p.points} pts)`];
+        GAMEMODES.forEach(gm => {
+          const t = bestTierOf(p.name, gm.id);
+          const lv = t ? state.tierLevels?.[gm.id]?.[t.id]?.[p.name] : null;
+          const tierStr = t ? `${lv === 'high' ? 'HT' : lv === 'low' ? 'LT' : ''}${t.id} (${t.points + (lv === 'high' ? (HT_BONUS[t.id]||0) : 0)} pts)` : 'Unranked';
+          lines.push(`  ${gm.label}: ${tierStr}`);
+        });
+        navigator.clipboard.writeText(lines.join('\n')).then(() => toast('Copied to clipboard ✓')).catch(() => toast('Copy failed', true));
+      });
+      row.title = 'Right-click to copy';
+
       content.appendChild(row);
     });
   }
@@ -380,19 +394,33 @@
   };
 
   // ── Icons ──────────────────────────────────────────
-  function starIcon() {
-    return `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
-  }
-  function gmIcon(id) {
-    const m = {
-      crystal:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polygon points="12,2 22,9 18,21 6,21 2,9"/><line x1="12" y1="2" x2="12" y2="21"/><line x1="2" y1="9" x2="22" y2="9"/></svg>`,
-      sword:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="12" y1="2" x2="12" y2="18"/><path d="M8 6l4-4 4 4"/><path d="M9 18h6"/><path d="M10 21h4"/></svg>`,
-      smp:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>`,
-      uhc:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
-      mace:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="9" y="1" width="6" height="10" rx="2"/><rect x="5" y="3" width="14" height="6" rx="2"/><line x1="12" y1="11" x2="12" y2="23"/></svg>`,
-      axe:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 12L5 21"/><path d="M14.5 4.5C12 2 8 2.5 6 5c-1.5 2-1 5 .5 7l8-8c-1-1.5-1.5-3-1-4.5z"/><path d="M14.5 4.5c1.5-1 3.5-.5 4.5 1 1.5 2 1 5-.5 7l-4-4"/></svg>`,
-    };
-    return m[id] || m.sword;
+  // ── Tab icons ──────────────────────────────────────
+  // To use custom icons: place image files in the same folder as index.html
+  // and update the GM_ICONS paths below. Supported: png, svg, webp, jpg
+  // Set to null to use the built-in SVG fallback instead.
+  const GM_ICONS = {
+    overall: null,   // e.g. "icons/overall.png"
+    crystal: null,   // e.g. "icons/crystal.png"
+    sword:   null,   // e.g. "icons/sword.png"
+    smp:     null,   // e.g. "icons/smp.png"
+    uhc:     null,   // e.g. "icons/uhc.png"
+    mace:    null,   // e.g. "icons/mace.png"
+    axe:     null,   // e.g. "icons/axe.png"
+  };
+
+  const GM_SVG_FALLBACK = {
+    overall: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`,
+    crystal: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polygon points="12,2 22,9 18,21 6,21 2,9"/><line x1="12" y1="2" x2="12" y2="21"/><line x1="2" y1="9" x2="22" y2="9"/></svg>`,
+    sword:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="12" y1="2" x2="12" y2="18"/><path d="M8 6l4-4 4 4"/><path d="M9 18h6"/><path d="M10 21h4"/></svg>`,
+    smp:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>`,
+    uhc:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+    mace:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="9" y="1" width="6" height="10" rx="2"/><rect x="5" y="3" width="14" height="6" rx="2"/><line x1="12" y1="11" x2="12" y2="23"/></svg>`,
+    axe:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 12L5 21"/><path d="M14.5 4.5C12 2 8 2.5 6 5c-1.5 2-1 5 .5 7l8-8c-1-1.5-1.5-3-1-4.5z"/><path d="M14.5 4.5c1.5-1 3.5-.5 4.5 1 1.5 2 1 5-.5 7l-4-4"/></svg>`,
+  };
+
+  function tabIcon(id) {
+    if (GM_ICONS[id]) return `<img src="${GM_ICONS[id]}" width="24" height="24" style="object-fit:contain;filter:brightness(0.85)">`;
+    return GM_SVG_FALLBACK[id] || GM_SVG_FALLBACK.sword;
   }
 
   window.tryLogin = () => {
@@ -752,10 +780,10 @@ body {
   display: flex; align-items: center; justify-content: center;
 }
 .tier-circle-empty { background: #1a1d2a; border-color: var(--border); }
-.tc-id { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.3px; }
-.tc-dash { color: var(--muted); }
-.tc-label { font-size: 0.55rem; font-weight: 700; letter-spacing: 0.3px; }
-.tc-empty { color: var(--muted); }
+.tc-icon { width: 16px; height: 16px; display:flex; align-items:center; justify-content:center; opacity:0.85; }
+.tc-icon svg { width:100%; height:100%; }
+.tc-icon img { width:100%; height:100%; object-fit:contain; filter:brightness(0.9); }
+.tc-label { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.5px; text-align:center; }
 
 /* ── Context Menu ────────────────────── */
 #context-menu {
