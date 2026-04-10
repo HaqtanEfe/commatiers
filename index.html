@@ -229,7 +229,7 @@
         GAMEMODES.forEach(gm => {
           const t = bestTierOf(p.name, gm.id);
           const lv = t ? state.tierLevels?.[gm.id]?.[t.id]?.[p.name] : null;
-          const tierStr = t ? `${lv === 'high' ? 'HT' : lv === 'low' ? 'LT' : ''}${t.id} (${t.points + (lv === 'high' ? (HT_BONUS[t.id]||0) : 0)} pts)` : 'Unranked';
+          const tierStr = t ? `${lv === 'high' ? 'H' : lv === 'low' ? 'L' : ''}${t.id} (${t.points + (lv === 'high' ? (HT_BONUS[t.id]||0) : 0)} pts)` : 'Unranked';
           lines.push(`  ${gm.label}: ${tierStr}`);
         });
         navigator.clipboard.writeText(lines.join('\n')).then(() => toast('Copied to clipboard ✓')).catch(() => toast('Copy failed', true));
