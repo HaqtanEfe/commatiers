@@ -49,6 +49,10 @@
     { min:   0, label: "Rookie",              color: "#667",    icon: "◌" },
   ];
 
+  const GM_ICONS = {
+    crystal: "icons/crystal.vsg",  
+  };
+
   function getTitle(pts) { return TITLES.find(t => pts >= t.min) || TITLES[TITLES.length - 1]; }
   const TIER_RANK = Object.fromEntries(TIERS.map((t, i) => [t.id, i]));
 
