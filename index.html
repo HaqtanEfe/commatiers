@@ -49,10 +49,6 @@
     { min:   0, label: "Rookie",              color: "#667",    icon: "◌" },
   ];
 
-  const GM_ICONS = {
-    crystal: "icons/crystal.vsg",  
-  };
-
   function getTitle(pts) { return TITLES.find(t => pts >= t.min) || TITLES[TITLES.length - 1]; }
   const TIER_RANK = Object.fromEntries(TIERS.map((t, i) => [t.id, i]));
 
@@ -404,7 +400,7 @@
   // Set to null to use the built-in SVG fallback instead.
   const GM_ICONS = {
     overall: null,   // e.g. "icons/overall.png"
-    crystal: null,   // e.g. "icons/crystal.png"
+    crystal: "icons/crystal.svg",,   // e.g. "icons/crystal.png"
     sword:   null,   // e.g. "icons/sword.png"
     smp:     null,   // e.g. "icons/smp.png"
     uhc:     null,   // e.g. "icons/uhc.png"
