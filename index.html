@@ -253,17 +253,10 @@
       const rankCell = document.createElement("div");
       rankCell.className = "or-rank-cell";
       rankCell.style.background = rankBg;
-      if (rank <= 3) {
-        rankCell.innerHTML = `
+      rankCell.innerHTML = `
           <span class="rank-num rank-top">${rank}.</span>
           <img class="mc-body" src="https://minotar.net/body/${encodeURIComponent(p.name)}/50"
                onerror="this.src='https://minotar.net/body/MHF_Steve/50'">`;
-      } else {
-        rankCell.innerHTML = `
-          <span class="rank-num rank-other">${rank}.</span>
-          <img class="mc-head-sm" src="https://minotar.net/avatar/${encodeURIComponent(p.name)}/36"
-               onerror="this.src='https://minotar.net/avatar/MHF_Steve/36'">`;
-      }
 
       // Player info
       const playerCell = document.createElement("div");
