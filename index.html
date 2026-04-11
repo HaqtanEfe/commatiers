@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PVP Tiers</title>
-
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -20,45 +19,92 @@
 
   const ADMIN_PASSWORD = "HaqtanEfe";
 
+  // =====================================================
+  // 🖼️ CUSTOM ICONS — set a path/URL or leave null
+  // =====================================================
+  const ICONS = {
+    // Tab / gamemode icons
+    overall:  null,   // e.g. "icons/overall.png"
+    crystal:  null,
+    sword:    null,
+    smp:      null,
+    uhc:      null,
+    mace:     null,
+    axe:      null,
+    // Title icons (shown next to player title in overall)
+    title_grandmaster: null,  // e.g. "icons/grandmaster.png"
+    title_master:      null,
+    title_ace:         null,
+    title_specialist:  null,
+    title_cadet:       null,
+    title_novice:      null,
+    title_rookie:      null,
+  };
+
   const GAMEMODES = [
     { id: "crystal", label: "Crystal" },
-    { id: "sword",   label: "Sword" },
-    { id: "smp",     label: "SMP" },
-    { id: "uhc",     label: "UHC" },
-    { id: "mace",    label: "Mace" },
-    { id: "axe",     label: "Axe" },
+    { id: "sword",   label: "Sword"   },
+    { id: "smp",     label: "SMP"     },
+    { id: "uhc",     label: "UHC"     },
+    { id: "mace",    label: "Mace"    },
+    { id: "axe",     label: "Axe"     },
   ];
 
+  // Points per tier (HT = base, LT = base - bonus)
   const TIERS = [
-    { id: "T1", label: "Tier 1", color: "#c8a84b", headerBg: "linear-gradient(135deg,#2a2010,#3a2e10)", headerText: "#e8c96a", points: 45 },
-    { id: "T2", label: "Tier 2", color: "#888ea0", headerBg: "linear-gradient(135deg,#1e2028,#262a38)", headerText: "#b0b8cc", points: 20 },
-    { id: "T3", label: "Tier 3", color: "#a0663a", headerBg: "linear-gradient(135deg,#241a10,#342210)", headerText: "#c88050", points: 6 },
-    { id: "T4", label: "Tier 4", color: "#5a6070", headerBg: "linear-gradient(135deg,#181c24,#1e2230)", headerText: "#8090aa", points: 3 },
-    { id: "T5", label: "Tier 5", color: "#4a5060", headerBg: "linear-gradient(135deg,#14181e,#1a1e28)", headerText: "#6a7888", points: 1 },
+    { id: "HT1", label: "High Tier 1", color: "#e63946", points: 60 },
+    { id: "LT1", label: "Low Tier 1",  color: "#ff9aa2", points: 45 },
+    { id: "HT2", label: "High Tier 2", color: "#f77f00", points: 30 },
+    { id: "LT2", label: "Low Tier 2",  color: "#ffbe7a", points: 20 },
+    { id: "HT3", label: "High Tier 3", color: "#2a9d8f", points: 10 },
+    { id: "LT3", label: "Low Tier 3",  color: "#8fd3c7", points:  6 },
+    { id: "HT4", label: "High Tier 4", color: "#457b9d", points:  4 },
+    { id: "LT4", label: "Low Tier 4",  color: "#a8cbe0", points:  3 },
+    { id: "HT5", label: "High Tier 5", color: "#6a4c93", points:  2 },
+    { id: "LT5", label: "Low Tier 5",  color: "#c3aed6", points:  1 },
   ];
-
-  const HT_BONUS = { T1: 15, T2: 10, T3: 4, T4: 1, T5: 1 };
+  const TIER_MAP = Object.fromEntries(TIERS.map(t => [t.id, t]));
+  const TIER_RANK = Object.fromEntries(TIERS.map((t, i) => [t.id, i]));
 
   const TITLES = [
-    { min: 400, label: "Combat Grandmaster", color: "#f5c518", icon: "◈" },
-    { min: 250, label: "Combat Master",       color: "#c8a84b", icon: "◈" },
-    { min: 100, label: "Combat Ace",          color: "#e05555", icon: "◆" },
-    { min:  50, label: "Combat Specialist",   color: "#9b8dff", icon: "◇" },
-    { min:  20, label: "Combat Cadet",        color: "#5a8fd4", icon: "◉" },
-    { min:  10, label: "Combat Novice",       color: "#5a8fd4", icon: "◎" },
-    { min:   0, label: "Rookie",              color: "#667",    icon: "◌" },
+    { key: "grandmaster", min: 400, label: "Combat Grandmaster", color: "#f5c518",  fallback: "◈" },
+    { key: "master",      min: 250, label: "Combat Master",       color: "#c8a84b",  fallback: "◈" },
+    { key: "ace",         min: 100, label: "Combat Ace",          color: "#e05555",  fallback: "◆" },
+    { key: "specialist",  min:  50, label: "Combat Specialist",   color: "#9b8dff",  fallback: "◇" },
+    { key: "cadet",       min:  20, label: "Combat Cadet",        color: "#5a8fd4",  fallback: "◉" },
+    { key: "novice",      min:  10, label: "Combat Novice",       color: "#5a8fd4",  fallback: "◎" },
+    { key: "rookie",      min:   0, label: "Rookie",              color: "#667",     fallback: "◌" },
   ];
 
   function getTitle(pts) { return TITLES.find(t => pts >= t.min) || TITLES[TITLES.length - 1]; }
-  const TIER_RANK = Object.fromEntries(TIERS.map((t, i) => [t.id, i]));
+
+  function titleIconHtml(title) {
+    const path = ICONS[`title_${title.key}`];
+    if (path) return `<img src="${path}" style="width:14px;height:14px;object-fit:contain;vertical-align:middle">`;
+    return `<span style="color:${title.color}">${title.fallback}</span>`;
+  }
+
+  function gmIconHtml(id, size = 20) {
+    if (ICONS[id]) return `<img src="${ICONS[id]}" width="${size}" height="${size}" style="object-fit:contain">`;
+    const svgs = {
+      overall: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`,
+      crystal: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="12,2 22,9 18,21 6,21 2,9"/><line x1="12" y1="2" x2="12" y2="21"/><line x1="2" y1="9" x2="22" y2="9"/></svg>`,
+      sword:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="12" y1="2" x2="12" y2="18"/><path d="M8 6l4-4 4 4"/><path d="M9 18h6"/><path d="M10 21h4"/></svg>`,
+      smp:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>`,
+      uhc:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+      mace:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="1" width="6" height="10" rx="2"/><rect x="5" y="3" width="14" height="6" rx="2"/><line x1="12" y1="11" x2="12" y2="23"/></svg>`,
+      axe:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 12L5 21"/><path d="M14.5 4.5C12 2 8 2.5 6 5c-1.5 2-1 5 .5 7l8-8c-1-1.5-1.5-3-1-4.5z"/><path d="M14.5 4.5c1.5-1 3.5-.5 4.5 1 1.5 2 1 5-.5 7l-4-4"/></svg>`,
+    };
+    return `<span style="width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center">${svgs[id] || svgs.sword}</span>`;
+  }
 
   function emptyState() {
-    const tiers = {}, tierLevels = {};
+    const tiers = {};
     GAMEMODES.forEach(gm => {
-      tiers[gm.id] = {}; tierLevels[gm.id] = {};
-      TIERS.forEach(t => { tiers[gm.id][t.id] = []; tierLevels[gm.id][t.id] = {}; });
+      tiers[gm.id] = {};
+      TIERS.forEach(t => tiers[gm.id][t.id] = []);
     });
-    return { players: [], tiers, tierLevels };
+    return { players: [], tiers, retired: {} };
   }
 
   const app = initializeApp(firebaseConfig);
@@ -66,7 +112,10 @@
   const REF = doc(db, "tierlist", "data");
 
   let state = emptyState(), isAdmin = false, activeGM = "overall";
-  let dragPlayer = null, dragSrc = null, contextMenuTarget = null;
+  let dragPlayer = null, dragSrc = null;
+
+  // context menu state
+  let ctxPlayer = null, ctxTier = null;
 
   async function save() {
     try { await setDoc(REF, state); }
@@ -76,15 +125,15 @@
   onSnapshot(REF, snap => {
     if (snap.exists()) {
       const d = snap.data();
-      if (!d.players) d.players = [];
-      if (!d.tiers)   d.tiers   = {};
-      if (!d.tierLevels) d.tierLevels = {};
+      if (!d.players)  d.players  = [];
+      if (!d.tiers)    d.tiers    = {};
+      if (!d.retired)  d.retired  = {};
       GAMEMODES.forEach(gm => {
         if (!d.tiers[gm.id]) d.tiers[gm.id] = {};
-        if (!d.tierLevels[gm.id]) d.tierLevels[gm.id] = {};
+        if (!d.retired[gm.id]) d.retired[gm.id] = {};
         TIERS.forEach(t => {
-          if (!d.tiers[gm.id][t.id]) d.tiers[gm.id][t.id] = [];
-          if (!d.tierLevels[gm.id][t.id]) d.tierLevels[gm.id][t.id] = {};
+          if (!d.tiers[gm.id][t.id])   d.tiers[gm.id][t.id]   = [];
+          if (!d.retired[gm.id][t.id]) d.retired[gm.id][t.id] = [];
         });
       });
       state = d;
@@ -92,67 +141,80 @@
     render();
   });
 
-  function render() { renderTabs(); if (activeGM === "overall") renderOverall(); else renderColumns(); }
-
-  // ── Points ─────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────
   function calcPoints(name) {
     let total = 0;
-    GAMEMODES.forEach(gm => TIERS.forEach(tier => {
-      if ((state.tiers[gm.id]?.[tier.id] || []).includes(name)) {
-        const lv = state.tierLevels?.[gm.id]?.[tier.id]?.[name];
-        total += tier.points + (lv === 'high' ? (HT_BONUS[tier.id] || 0) : 0);
-      }
-    }));
+    GAMEMODES.forEach(gm => {
+      TIERS.forEach(tier => {
+        // active + retired both count
+        const inActive  = (state.tiers[gm.id]?.[tier.id]   || []).includes(name);
+        const inRetired = (state.retired[gm.id]?.[tier.id]  || []).includes(name);
+        if (inActive || inRetired) total += tier.points;
+      });
+    });
     return total;
   }
 
   function bestTierOf(name, gmId) {
-    for (const tier of TIERS)
-      if ((state.tiers[gmId]?.[tier.id] || []).includes(name)) return tier;
+    for (const tier of TIERS) {
+      if ((state.tiers[gmId]?.[tier.id] || []).includes(name)) return { tier, retired: false };
+      if ((state.retired[gmId]?.[tier.id] || []).includes(name)) return { tier, retired: true };
+    }
     return null;
   }
 
-  function primaryGamemode(name) {
-    let best = null, bestRank = Infinity;
-    GAMEMODES.forEach(gm => {
-      const tier = bestTierOf(name, gm.id);
-      if (tier && TIER_RANK[tier.id] < bestRank) { bestRank = TIER_RANK[tier.id]; best = gm; }
-    });
-    return best;
+  // Returns gamemodes sorted best→worst for this player
+  function sortedGamemodesFor(name) {
+    return GAMEMODES.map(gm => {
+      const r = bestTierOf(name, gm.id);
+      return { gm, result: r, rank: r ? TIER_RANK[r.tier.id] : Infinity };
+    }).filter(x => x.result).sort((a, b) => a.rank - b.rank);
   }
 
-  // ── Tabs ───────────────────────────────────────────
+  function primaryGamemode(name) {
+    const sorted = sortedGamemodesFor(name);
+    return sorted.length ? sorted[0].gm : null;
+  }
+
+  // ── Render ─────────────────────────────────────────
+  function render() {
+    renderTabs();
+    if (activeGM === "overall") renderOverall();
+    else renderGamemode();
+  }
+
+  // ── Tab bar ────────────────────────────────────────
   function renderTabs() {
     const bar = document.getElementById("tab-bar");
     bar.innerHTML = "";
-
-    const tabs = [{ id: "overall", label: "Overall" }, ...GAMEMODES.map(g => ({ id: g.id, label: g.label }))];
+    const tabs = [{ id: "overall", label: "Overall" }, ...GAMEMODES];
     tabs.forEach(tab => {
       const btn = document.createElement("button");
       btn.className = "tab-btn" + (tab.id === activeGM ? " active" : "");
-      btn.innerHTML = `<span class="tab-icon">${tabIcon(tab.id)}</span><strong>${tab.label}</strong>`;
+      btn.innerHTML = `<span class="tab-icon">${gmIconHtml(tab.id, 22)}</span><strong>${tab.label}</strong>`;
       btn.onclick = () => { activeGM = tab.id; render(); };
       bar.appendChild(btn);
     });
   }
 
-  // ── Overall ────────────────────────────────────────
+  // ── Overall leaderboard ────────────────────────────
   function renderOverall() {
     const content = document.getElementById("main-content");
     content.innerHTML = "";
-    document.getElementById("unranked-section").innerHTML = "";
 
     const players = state.players || [];
-    if (players.length === 0) {
+    if (!players.length) {
       content.innerHTML = `<div class="empty-state">No players added yet.</div>`;
       return;
     }
 
     const ranked = players.map(name => ({
-      name, points: calcPoints(name), primaryGM: primaryGamemode(name),
+      name, points: calcPoints(name),
+      primaryGM: primaryGamemode(name),
+      sortedGMs: sortedGamemodesFor(name),
     })).sort((a, b) => b.points - a.points);
 
-    // Column headers
+    // Header
     const hdr = document.createElement("div");
     hdr.className = "overall-header";
     hdr.innerHTML = `<span>#</span><span>Player</span><span class="oh-primary">Primary</span><span class="oh-tiers">Tiers</span>`;
@@ -163,85 +225,93 @@
       if (i > 0 && p.points < ranked[i-1].points) rank = i + 1;
       const title = getTitle(p.points);
       const primaryGM = p.primaryGM;
-      const primaryBestTier = primaryGM ? bestTierOf(p.name, primaryGM.id) : null;
+      const primaryResult = primaryGM ? bestTierOf(p.name, primaryGM.id) : null;
 
       const row = document.createElement("div");
       row.className = "overall-row";
+      row.title = "Right-click for options";
 
-      // Rank cell — top 3 get colored bg with big skin
+      // ── Rank cell (mctiers style: colored bg + big skin) ──
+      const rankBg = rank === 1 ? "linear-gradient(135deg,#6a4800,#c89010)"
+                   : rank === 2 ? "linear-gradient(135deg,#303848,#505870)"
+                   : rank === 3 ? "linear-gradient(135deg,#4a2200,#8a4a10)"
+                   : "var(--card)";
       const rankCell = document.createElement("div");
-      rankCell.className = `or-rank-cell rank-cell-${rank <= 3 ? rank : 'other'}`;
-      rankCell.innerHTML = `
-        <span class="rank-num">${rank}.</span>
-        <img class="mc-skin-bg" src="https://minotar.net/avatar/${encodeURIComponent(p.name)}/60" onerror="this.src='https://minotar.net/avatar/MHF_Steve/60'">
-      `;
+      rankCell.className = "or-rank-cell";
+      rankCell.style.background = rankBg;
+      // Full body skin for top 3, just head for the rest
+      if (rank <= 3) {
+        rankCell.innerHTML = `
+          <span class="rank-num rank-top">${rank}.</span>
+          <img class="mc-body" src="https://minotar.net/body/${encodeURIComponent(p.name)}/50" onerror="this.src='https://minotar.net/body/MHF_Steve/50'">
+        `;
+      } else {
+        rankCell.innerHTML = `
+          <span class="rank-num rank-other">${rank}.</span>
+          <img class="mc-head-sm" src="https://minotar.net/avatar/${encodeURIComponent(p.name)}/36" onerror="this.src='https://minotar.net/avatar/MHF_Steve/36'">
+        `;
+      }
 
-      // Player info
+      // ── Player info ──
       const playerCell = document.createElement("div");
       playerCell.className = "or-player-cell";
       playerCell.innerHTML = `
         <span class="or-name">${p.name}</span>
-        <span class="or-title" style="color:${title.color}">${title.icon} ${title.label} <span class="or-pts">(${p.points} points)</span></span>
+        <span class="or-title">${titleIconHtml(title)} <span style="color:${title.color};font-weight:600">${title.label}</span> <span class="or-pts">(${p.points} points)</span></span>
       `;
 
-      // Primary gamemode
+      // ── Primary gamemode badge ──
       const primaryCell = document.createElement("div");
       primaryCell.className = "or-primary-cell";
-      if (primaryGM) {
-        primaryCell.innerHTML = `<span class="primary-badge" style="background:${primaryBestTier ? primaryBestTier.color+'22' : '#1a2a3a'};color:${primaryBestTier ? primaryBestTier.color : '#5a9fd4'};border-color:${primaryBestTier ? primaryBestTier.color+'55' : '#2a4a6a'}">${primaryGM.label}</span>`;
+      if (primaryGM && primaryResult) {
+        const tc = primaryResult.tier.color;
+        primaryCell.innerHTML = `<span class="primary-badge" style="background:${tc}18;color:${tc};border-color:${tc}55">${primaryGM.label}</span>`;
       } else {
         primaryCell.innerHTML = `<span class="primary-badge unranked-badge">—</span>`;
       }
 
-      // Tier badges
+      // ── Tier circles — sorted best to worst ──
       const tiersCell = document.createElement("div");
       tiersCell.className = "or-tiers-cell";
-      GAMEMODES.forEach(gm => {
-        const tier = bestTierOf(p.name, gm.id);
-        const level = tier ? state.tierLevels?.[gm.id]?.[tier.id]?.[p.name] : null;
+
+      p.sortedGMs.forEach(({ gm, result }) => {
+        const { tier, retired } = result;
+        const tc = tier.color;
         const wrap = document.createElement("div");
-        wrap.className = "tier-circle-wrap";
-        wrap.title = gm.label + (tier ? `: ${tier.label}${level ? ' ('+(level==='high'?'HT':'LT')+')' : ''}` : ': Unranked');
-        const tierNum = tier ? tier.id.replace('T','') : '';
-        const htlt = level === 'high' ? 'HT' : level === 'low' ? 'LT' : '';
-        const badgeLabel = tier ? (htlt ? htlt + tierNum : tier.id) : '—';
-        const borderCol = tier ? tier.color + 'aa' : '#2a2f45';
-        const bgCol = tier ? tier.color + '22' : '#181c27';
-        const textCol = tier ? tier.color : '#3a4060';
+        wrap.className = "tier-circle-wrap" + (retired ? " retired-wrap" : "");
+
+        // Tooltip
+        wrap.title = `${gm.label}: ${tier.label} (${tier.points} pts)${retired ? ' — Retired' : ''}`;
+
         wrap.innerHTML = `
-          <div class="tier-circle" style="background:${bgCol};border-color:${borderCol}">
-            <span class="tc-icon">${tabIcon(gm.id)}</span>
+          <div class="tier-circle" style="background:${tc}22;border-color:${tc}99${retired ? ';opacity:0.55;filter:grayscale(0.4)' : ''}">
+            <span class="tc-gm-icon">${gmIconHtml(gm.id, 16)}</span>
           </div>
-          <span class="tc-label" style="color:${textCol}">${badgeLabel}</span>
+          <span class="tc-label" style="color:${retired ? '#667' : tc}">${tier.id}${retired ? '*' : ''}</span>
         `;
         tiersCell.appendChild(wrap);
       });
+
+      if (!p.sortedGMs.length) {
+        tiersCell.innerHTML = `<span style="color:var(--muted);font-size:0.75rem;font-style:italic">No tiers</span>`;
+      }
 
       row.appendChild(rankCell);
       row.appendChild(playerCell);
       row.appendChild(primaryCell);
       row.appendChild(tiersCell);
-
-      // Right-click to copy player summary
-      row.addEventListener('contextmenu', e => {
-        e.preventDefault();
-        const lines = [`${p.name} — ${title.label} (${p.points} pts)`];
-        GAMEMODES.forEach(gm => {
-          const t = bestTierOf(p.name, gm.id);
-          const lv = t ? state.tierLevels?.[gm.id]?.[t.id]?.[p.name] : null;
-          const tierStr = t ? `${lv === 'high' ? 'H' : lv === 'low' ? 'L' : ''}${t.id} (${t.points + (lv === 'high' ? (HT_BONUS[t.id]||0) : 0)} pts)` : 'Unranked';
-          lines.push(`  ${gm.label}: ${tierStr}`);
-        });
-        navigator.clipboard.writeText(lines.join('\n')).then(() => toast('Copied to clipboard ✓')).catch(() => toast('Copy failed', true));
-      });
-      row.title = 'Right-click to copy';
-
       content.appendChild(row);
+
+      // Right-click context menu on overall rows
+      row.addEventListener("contextmenu", e => {
+        e.preventDefault();
+        showOverallCtx(e.pageX, e.pageY, p.name, title, p.points, p.sortedGMs);
+      });
     });
   }
 
-  // ── Per-gamemode columns ───────────────────────────
-  function renderColumns() {
+  // ── Per-gamemode view ──────────────────────────────
+  function renderGamemode() {
     const content = document.getElementById("main-content");
     content.innerHTML = "";
 
@@ -250,33 +320,41 @@
     content.appendChild(grid);
 
     TIERS.forEach(tier => {
-      const players = state.tiers[activeGM]?.[tier.id] || [];
-      const tierLevelData = state.tierLevels?.[activeGM]?.[tier.id] || {};
+      const players  = state.tiers[activeGM]?.[tier.id] || [];
+      const retiredP = state.retired[activeGM]?.[tier.id] || [];
 
       const col = document.createElement("div");
       col.className = "tier-col";
 
+      const tcol = TIERS.find(t => t.id === tier.id).color;
+      const headerBg = tier.id.startsWith('H')
+        ? `linear-gradient(135deg,${tcol}18,${tcol}08)`
+        : `linear-gradient(135deg,${tcol}0e,${tcol}04)`;
+
       const header = document.createElement("div");
       header.className = "tier-col-header";
-      header.style.background = tier.headerBg;
-      header.style.borderBottom = `2px solid ${tier.color}`;
-      header.innerHTML = `<span class="trophy-icon" style="color:${tier.headerText}">🏆</span><span class="tier-col-title" style="color:${tier.headerText}">${tier.label}</span>`;
+      header.style.background = headerBg;
+      header.style.borderBottom = `2px solid ${tcol}`;
+      header.innerHTML = `
+        <span class="trophy-icon" style="color:${tcol}">🏆</span>
+        <span class="tier-col-title" style="color:${tcol}">${tier.label}</span>
+        <span class="tier-pts-badge" style="background:${tcol}22;color:${tcol}">${tier.points}pt</span>
+      `;
       col.appendChild(header);
 
       const list = document.createElement("div");
       list.className = "tier-col-list" + (isAdmin ? " admin-mode" : "");
       list.dataset.tier = tier.id;
 
-      if (players.length === 0) {
+      const allPlayers = [...players, ...retiredP.map(n => ({ name: n, retired: true }))];
+      if (!players.length && !retiredP.length) {
         const empty = document.createElement("div");
         empty.className = "col-empty";
         empty.textContent = isAdmin ? "Drop here" : "—";
         list.appendChild(empty);
       } else {
-        players.forEach(name => {
-          const level = tierLevelData[name] || null;
-          list.appendChild(makeRow(name, tier.id, level));
-        });
+        players.forEach(name => list.appendChild(makeRow(name, tier.id, false)));
+        retiredP.forEach(name => list.appendChild(makeRow(name, tier.id, true)));
       }
 
       if (isAdmin) setupDrop(list, tier.id);
@@ -285,10 +363,9 @@
     });
 
     // Unranked
-    const inTiers = new Set(TIERS.flatMap(t => state.tiers[activeGM]?.[t.id] || []));
-    const unranked = (state.players || []).filter(p => !inTiers.has(p));
-    const uSec = document.getElementById("unranked-section");
-    uSec.innerHTML = "";
+    const inTiers   = new Set(TIERS.flatMap(t => state.tiers[activeGM]?.[t.id] || []));
+    const inRetired = new Set(TIERS.flatMap(t => state.retired[activeGM]?.[t.id] || []));
+    const unranked  = (state.players || []).filter(p => !inTiers.has(p) && !inRetired.has(p));
 
     if (isAdmin || unranked.length > 0) {
       const uWrap = document.createElement("div");
@@ -297,22 +374,22 @@
       const uList = document.createElement("div");
       uList.className = "unranked-list" + (isAdmin ? " admin-mode" : "");
       uList.dataset.tier = "unranked";
-      if (unranked.length === 0) {
+      if (!unranked.length) {
         const e = document.createElement("div");
         e.className = "col-empty"; e.textContent = "All players are ranked";
         uList.appendChild(e);
       } else {
-        unranked.forEach(p => uList.appendChild(makeRow(p, "unranked", null)));
+        unranked.forEach(p => uList.appendChild(makeRow(p, "unranked", false)));
       }
       if (isAdmin) setupDrop(uList, "unranked");
       uWrap.appendChild(uList);
-      uSec.appendChild(uWrap);
+      content.appendChild(uWrap);
     }
   }
 
-  function makeRow(name, srcTier, tierLevel) {
+  function makeRow(name, srcTier, retired) {
     const row = document.createElement("div");
-    row.className = "player-row";
+    row.className = "player-row" + (retired ? " retired-row" : "");
     row.dataset.playerName = name; row.dataset.tier = srcTier;
 
     const head = document.createElement("img");
@@ -323,106 +400,136 @@
     const nm = document.createElement("span");
     nm.className = "player-name"; nm.textContent = name;
 
-    const indicator = document.createElement("span");
-    indicator.className = "tier-indicator";
-    if (tierLevel === 'high') { indicator.innerHTML = '▲'; indicator.classList.add('high-tier'); indicator.title = 'High Tier'; }
-    else if (tierLevel === 'low') { indicator.innerHTML = '▼'; indicator.classList.add('low-tier'); indicator.title = 'Low Tier'; }
+    const retiredBadge = retired ? (() => {
+      const s = document.createElement("span");
+      s.className = "retired-badge"; s.textContent = "Retired";
+      return s;
+    })() : null;
 
-    row.appendChild(head); row.appendChild(nm); row.appendChild(indicator);
+    row.appendChild(head); row.appendChild(nm);
+    if (retiredBadge) row.appendChild(retiredBadge);
 
     if (isAdmin) {
-      row.draggable = true;
-      row.addEventListener("dragstart", e => { dragPlayer = name; dragSrc = srcTier; setTimeout(() => row.classList.add("dragging"), 0); e.dataTransfer.effectAllowed = "move"; });
-      row.addEventListener("dragend", () => row.classList.remove("dragging"));
+      if (!retired) {
+        row.draggable = true;
+        row.addEventListener("dragstart", e => {
+          dragPlayer = name; dragSrc = srcTier;
+          setTimeout(() => row.classList.add("dragging"), 0);
+          e.dataTransfer.effectAllowed = "move";
+        });
+        row.addEventListener("dragend", () => row.classList.remove("dragging"));
+      }
+
       row.addEventListener("contextmenu", e => {
         e.preventDefault(); e.stopPropagation();
-        if (srcTier === "unranked") {
-          if (confirm(`Remove "${name}" from all tier lists?`)) {
-            state.players = state.players.filter(p => p !== name);
-            GAMEMODES.forEach(gm => TIERS.forEach(t => {
-              state.tiers[gm.id][t.id] = state.tiers[gm.id][t.id].filter(p => p !== name);
-              if (state.tierLevels[gm.id][t.id][name]) delete state.tierLevels[gm.id][t.id][name];
-            }));
-            save();
-          }
-        } else {
-          contextMenuTarget = { name, tier: srcTier, row };
-          showContextMenu(e.pageX, e.pageY, tierLevel);
-        }
+        ctxPlayer = name; ctxTier = srcTier;
+        showPlayerCtx(e.pageX, e.pageY, name, srcTier, retired);
       });
     }
     return row;
   }
 
   function setupDrop(el, targetTier) {
-    el.addEventListener("dragover", e => { e.preventDefault(); el.classList.add("drop-over"); });
+    el.addEventListener("dragover",  e => { e.preventDefault(); el.classList.add("drop-over"); });
     el.addEventListener("dragleave", () => el.classList.remove("drop-over"));
     el.addEventListener("drop", e => {
       e.preventDefault(); el.classList.remove("drop-over");
       if (!dragPlayer || !isAdmin) return;
-      if (dragSrc !== "unranked") state.tiers[activeGM][dragSrc] = state.tiers[activeGM][dragSrc].filter(p => p !== dragPlayer);
-      if (targetTier !== "unranked" && !state.tiers[activeGM][targetTier].includes(dragPlayer)) {
+      if (dragSrc !== "unranked")
+        state.tiers[activeGM][dragSrc] = state.tiers[activeGM][dragSrc].filter(p => p !== dragPlayer);
+      if (targetTier !== "unranked" && !state.tiers[activeGM][targetTier].includes(dragPlayer))
         state.tiers[activeGM][targetTier].push(dragPlayer);
-        if (dragSrc !== "unranked" && dragSrc !== targetTier && state.tierLevels[activeGM][dragSrc]?.[dragPlayer])
-          delete state.tierLevels[activeGM][dragSrc][dragPlayer];
-      }
       save(); dragPlayer = null; dragSrc = null;
     });
   }
 
-  function showContextMenu(x, y, currentLevel) {
-    const menu = document.getElementById("context-menu");
-    document.getElementById("ctx-high-tier").classList.toggle('active', currentLevel === 'high');
-    document.getElementById("ctx-low-tier").classList.toggle('active', currentLevel === 'low');
-    const clearDiv = document.getElementById("ctx-clear-tier");
-    const clearBtn = document.getElementById("ctx-clear-btn");
-    clearDiv.style.display = currentLevel ? 'block' : 'none';
-    clearBtn.style.display = currentLevel ? 'flex' : 'none';
-    menu.style.display = 'flex'; menu.style.left = x + 'px'; menu.style.top = y + 'px';
+  // ── Context menus ──────────────────────────────────
+  function hideCtx() {
+    document.getElementById("ctx-player").style.display = "none";
+    document.getElementById("ctx-overall").style.display = "none";
   }
 
-  function hideContextMenu() { document.getElementById("context-menu").style.display = 'none'; contextMenuTarget = null; }
-
-  window.setTierLevel = function(level) {
-    if (!contextMenuTarget) return;
-    const { name, tier } = contextMenuTarget;
-    if (!state.tierLevels[activeGM]) state.tierLevels[activeGM] = {};
-    if (!state.tierLevels[activeGM][tier]) state.tierLevels[activeGM][tier] = {};
-    if (level) state.tierLevels[activeGM][tier][name] = level;
-    else delete state.tierLevels[activeGM][tier][name];
-    save(); hideContextMenu();
-  };
-
-  // ── Icons ──────────────────────────────────────────
-  // ── Tab icons ──────────────────────────────────────
-  // To use custom icons: place image files in the same folder as index.html
-  // and update the GM_ICONS paths below. Supported: png, svg, webp, jpg
-  // Set to null to use the built-in SVG fallback instead.
-  const GM_ICONS = {
-    overall: "icons/overall.svg",   // e.g. "icons/overall.png"
-    crystal: "icons/crystal.svg",   // e.g. "icons/crystal.png"
-    sword:   "icons/sword.svg",   // e.g. "icons/sword.png"
-    smp:     "icons/smp.svg",   // e.g. "icons/smp.png"
-    uhc:     "icons/uhc.svg",   // e.g. "icons/uhc.png"
-    mace:    "icons/mace.svg",   // e.g. "icons/mace.png"
-    axe:     "icons/axe.svg",   // e.g. "icons/axe.png"
-  };
-
-  const GM_SVG_FALLBACK = {
-    overall: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`,
-    crystal: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polygon points="12,2 22,9 18,21 6,21 2,9"/><line x1="12" y1="2" x2="12" y2="21"/><line x1="2" y1="9" x2="22" y2="9"/></svg>`,
-    sword:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="12" y1="2" x2="12" y2="18"/><path d="M8 6l4-4 4 4"/><path d="M9 18h6"/><path d="M10 21h4"/></svg>`,
-    smp:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>`,
-    uhc:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
-    mace:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="9" y="1" width="6" height="10" rx="2"/><rect x="5" y="3" width="14" height="6" rx="2"/><line x1="12" y1="11" x2="12" y2="23"/></svg>`,
-    axe:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 12L5 21"/><path d="M14.5 4.5C12 2 8 2.5 6 5c-1.5 2-1 5 .5 7l8-8c-1-1.5-1.5-3-1-4.5z"/><path d="M14.5 4.5c1.5-1 3.5-.5 4.5 1 1.5 2 1 5-.5 7l-4-4"/></svg>`,
-  };
-
-  function tabIcon(id) {
-    if (GM_ICONS[id]) return `<img src="${GM_ICONS[id]}" width="24" height="24" style="object-fit:contain;filter:brightness(0.85)">`;
-    return GM_SVG_FALLBACK[id] || GM_SVG_FALLBACK.sword;
+  // In-gamemode right-click: retire / remove
+  function showPlayerCtx(x, y, name, tier, retired) {
+    const menu = document.getElementById("ctx-player");
+    const retireBtn = document.getElementById("ctx-retire");
+    const unretireBtn = document.getElementById("ctx-unretire");
+    retireBtn.style.display   = (!retired && tier !== "unranked") ? "flex" : "none";
+    unretireBtn.style.display = retired ? "flex" : "none";
+    posMenu(menu, x, y);
   }
 
+  // Overall right-click: copy info
+  function showOverallCtx(x, y, name, title, points, sortedGMs) {
+    const menu = document.getElementById("ctx-overall");
+    menu.dataset.copy = JSON.stringify({ name, title: title.label, points, gms: sortedGMs.map(s => ({
+      gm: s.gm.label, tier: s.result.tier.id, pts: s.result.tier.points, retired: s.result.retired
+    })) });
+    posMenu(menu, x, y);
+  }
+
+  function posMenu(menu, x, y) {
+    hideCtx();
+    menu.style.display = "flex";
+    // Keep within viewport
+    const vw = window.innerWidth, vh = window.innerHeight;
+    let lx = x, ly = y;
+    if (lx + 180 > vw) lx = vw - 185;
+    if (ly + menu.offsetHeight + 20 > vh) ly = y - menu.offsetHeight;
+    menu.style.left = lx + "px"; menu.style.top = ly + "px";
+  }
+
+  window.ctxRetire = function() {
+    if (!ctxPlayer || !ctxTier || ctxTier === "unranked") return;
+    // Move from active to retired
+    state.tiers[activeGM][ctxTier] = state.tiers[activeGM][ctxTier].filter(p => p !== ctxPlayer);
+    if (!state.retired[activeGM]) state.retired[activeGM] = {};
+    if (!state.retired[activeGM][ctxTier]) state.retired[activeGM][ctxTier] = [];
+    if (!state.retired[activeGM][ctxTier].includes(ctxPlayer))
+      state.retired[activeGM][ctxTier].push(ctxPlayer);
+    save(); hideCtx();
+  };
+
+  window.ctxUnretire = function() {
+    if (!ctxPlayer || !ctxTier) return;
+    state.retired[activeGM][ctxTier] = state.retired[activeGM][ctxTier].filter(p => p !== ctxPlayer);
+    if (!state.tiers[activeGM][ctxTier].includes(ctxPlayer))
+      state.tiers[activeGM][ctxTier].push(ctxPlayer);
+    save(); hideCtx();
+  };
+
+  window.ctxRemove = function() {
+    if (!ctxPlayer) return;
+    if (!confirm(`Remove "${ctxPlayer}" from all tier lists?`)) return;
+    state.players = state.players.filter(p => p !== ctxPlayer);
+    GAMEMODES.forEach(gm => TIERS.forEach(t => {
+      state.tiers[gm.id][t.id]   = (state.tiers[gm.id][t.id]   || []).filter(p => p !== ctxPlayer);
+      state.retired[gm.id][t.id] = (state.retired[gm.id][t.id] || []).filter(p => p !== ctxPlayer);
+    }));
+    save(); hideCtx();
+  };
+
+  window.ctxCopy = function() {
+    const menu = document.getElementById("ctx-overall");
+    const d = JSON.parse(menu.dataset.copy || "{}");
+    if (!d.name) return;
+    const lines = [
+      `${d.name} — ${d.title} (${d.points} pts)`,
+      ...d.gms.map(g => `  ${g.gm}: ${g.tier} (${g.pts} pts)${g.retired ? ' [Retired]' : ''}`)
+    ];
+    navigator.clipboard.writeText(lines.join("\n"))
+      .then(() => toast("Copied ✓"))
+      .catch(() => toast("Copy failed", true));
+    hideCtx();
+  };
+
+  // Close menus on outside click
+  document.addEventListener("click", e => {
+    if (!document.getElementById("ctx-player").contains(e.target) &&
+        !document.getElementById("ctx-overall").contains(e.target)) hideCtx();
+  });
+
+  // ── Admin ──────────────────────────────────────────
   window.tryLogin = () => {
     if (document.getElementById("pw-input").value === ADMIN_PASSWORD) {
       isAdmin = true;
@@ -453,26 +560,21 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("pw-input").addEventListener("keydown", e => { if (e.key === "Enter") window.tryLogin(); });
-    document.addEventListener("click", e => {
-      const menu = document.getElementById("context-menu");
-      if (!menu.contains(e.target)) hideContextMenu();
-    });
   });
 </script>
-
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
   --bg:        #0f1117;
-  --card:      #181c27;
-  --card2:     #1e2235;
+  --card:      #171b27;
+  --card2:     #1c2035;
   --row-bg:    #1a1e2e;
-  --row-hover: #222840;
-  --border:    #2a2f45;
+  --row-hover: #21263a;
+  --border:    #252a3e;
   --text:      #dde0ee;
-  --muted:     #5a6080;
+  --muted:     #55607a;
   --accent:    #5865f2;
 }
 
@@ -487,349 +589,252 @@ body {
   flex-direction: column;
 }
 
-/* ── Top nav ──────────────────────────── */
+/* ── Nav ─────────────────────────────── */
 .top-nav {
-  height: 56px;
+  height: 54px;
   background: var(--card);
   border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  padding: 0 20px;
-  gap: 16px;
-  flex-shrink: 0;
-  position: sticky;
-  top: 0;
-  z-index: 50;
+  display: flex; align-items: center;
+  padding: 0 20px; gap: 12px;
+  flex-shrink: 0; position: sticky; top: 0; z-index: 50;
 }
-.site-logo {
-  font-size: 1rem;
-  font-weight: 800;
-  color: #fff;
-  letter-spacing: 1px;
-  flex-shrink: 0;
-  margin-right: 8px;
-}
-.nav-right {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-}
-.admin-btn {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--muted);
-  border-radius: 6px;
-  padding: 5px 12px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  cursor: pointer;
-  font-family: 'Inter', sans-serif;
-  transition: color .1s, border-color .1s;
+.site-logo { font-size: 1rem; font-weight: 800; color: #fff; letter-spacing: 1px; flex-shrink: 0; }
+.nav-right  { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.admin-btn  {
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  border-radius: 6px; padding: 5px 12px; font-size: 0.75rem; font-weight: 500;
+  cursor: pointer; font-family: 'Inter', sans-serif; transition: color .1s, border-color .1s;
 }
 .admin-btn:hover { color: var(--text); border-color: #445; }
-#admin-badge {
-  display: none; align-items: center; gap: 4px;
-  font-size: 0.68rem; font-weight: 600; color: #4cde82;
-}
+#admin-badge { display: none; align-items: center; gap: 4px; font-size: 0.68rem; font-weight: 600; color: #4cde82; }
 .badge-dot { width: 5px; height: 5px; border-radius: 50%; background: #4cde82; }
 
 /* ── Admin toolbar ───────────────────── */
 #admin-toolbar {
-  display: none; align-items: center; gap: 8px;
-  padding: 8px 20px;
-  background: rgba(88,101,242,0.07);
-  border-bottom: 1px solid rgba(88,101,242,0.18);
+  display: none; align-items: center; gap: 8px; padding: 8px 20px;
+  background: rgba(88,101,242,0.07); border-bottom: 1px solid rgba(88,101,242,0.18);
   flex-wrap: wrap; flex-shrink: 0;
 }
 #admin-toolbar > .lbl { font-size: 0.68rem; font-weight: 700; letter-spacing: 1px; color: var(--accent); text-transform: uppercase; }
 #player-input {
-  background: var(--card2); border: 1px solid var(--border);
-  border-radius: 6px; padding: 6px 10px;
-  color: var(--text); font-family: 'Inter', sans-serif;
+  background: var(--card2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 10px; color: var(--text); font-family: 'Inter', sans-serif;
   font-size: 0.83rem; outline: none; width: 200px;
 }
 #player-input:focus { border-color: var(--accent); }
 .btn-add {
-  background: var(--accent); color: #fff; border: none;
-  border-radius: 6px; padding: 6px 14px;
-  font-family: 'Inter', sans-serif; font-size: 0.82rem; font-weight: 600;
-  cursor: pointer; transition: opacity .12s;
+  background: var(--accent); color: #fff; border: none; border-radius: 6px;
+  padding: 6px 14px; font-family: 'Inter', sans-serif; font-size: 0.82rem;
+  font-weight: 600; cursor: pointer; transition: opacity .12s;
 }
 .btn-add:hover { opacity: 0.85; }
 .admin-hint { font-size: 0.7rem; color: var(--muted); margin-left: auto; }
 
-/* ── Page layout ─────────────────────── */
-.page-wrap {
-  flex: 1;
-  max-width: 1300px;
-  margin: 0 auto;
-  width: 100%;
-  padding: 32px 20px 60px;
-}
+/* ── Page ────────────────────────────── */
+.page-wrap { flex: 1; max-width: 1300px; margin: 0 auto; width: 100%; padding: 28px 18px 60px; overflow: hidden; }
 
-/* ── Tabs (mctiers style pill tabs) ──── */
+/* ── Tabs ────────────────────────────── */
 #tab-bar {
-  display: flex;
-  gap: 4px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  display: flex; gap: 4px;
+  overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none; -ms-overflow-style: none;
 }
 #tab-bar::-webkit-scrollbar { display: none; }
 
 .tab-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 5px;
-  padding: 10px 22px 11px;
-  background: var(--card);
-  border: 2px solid var(--border);
-  border-bottom: none;
-  border-radius: 20px 20px 0 0;
-  color: #6a7090;
-  font-family: 'Inter', sans-serif;
-  font-size: 0.78rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: color .12s, background .12s, border-color .12s;
-  white-space: nowrap;
-  position: relative;
-  bottom: -2px;
-  min-width: 72px;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  gap: 5px; padding: 10px 18px 11px;
+  background: var(--card); border: 2px solid var(--border); border-bottom: none;
+  border-radius: 20px 20px 0 0; color: #5a6480;
+  font-family: 'Inter', sans-serif; font-size: 0.76rem; font-weight: 700;
+  cursor: pointer; transition: color .12s, background .12s;
+  white-space: nowrap; position: relative; bottom: -2px; min-width: 70px;
 }
-.tab-btn:hover { color: #aab0cc; background: var(--card2); }
-.tab-btn.active {
-  color: #fff;
-  background: var(--card2);
-  border-color: var(--border);
-}
+.tab-btn:hover { color: #9aa0c0; background: var(--card2); }
+.tab-btn.active { color: #fff; background: var(--card2); border-color: var(--border); }
 .tab-btn.active::after {
-  content: '';
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  height: 2px;
-  background: var(--card2);
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+  height: 2px; background: var(--card2);
 }
 .tab-icon { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; color: inherit; }
 .tab-icon svg { width: 100%; height: 100%; }
 
 /* ── Main card ───────────────────────── */
 .main-card {
-  background: var(--card2);
-  border: 2px solid var(--border);
-  border-radius: 0 16px 16px 16px;
-  padding: 20px;
-  min-height: 400px;
+  background: var(--card2); border: 2px solid var(--border);
+  border-radius: 0 16px 16px 16px; padding: 18px; min-height: 400px;
 }
 
-/* ── Tier grid (columns) ─────────────── */
+/* ── Tier columns ────────────────────── */
 #tier-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;
 }
-
-.tier-col {
-  background: var(--row-bg);
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-}
+.tier-col { background: var(--row-bg); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
 .tier-col-header {
   display: flex; align-items: center; justify-content: center;
-  gap: 8px; padding: 14px 10px;
-  font-weight: 700; font-size: 0.95rem;
+  gap: 7px; padding: 12px 8px;
 }
-.trophy-icon { font-size: 1.1rem; line-height: 1; }
-.tier-col-title { font-size: 0.92rem; font-weight: 700; }
+.trophy-icon { font-size: 1rem; }
+.tier-col-title { font-size: 0.85rem; font-weight: 700; }
+.tier-pts-badge { font-size: 0.62rem; font-weight: 700; padding: 2px 5px; border-radius: 4px; margin-left: 2px; }
 
 /* ── Player rows ─────────────────────── */
 .tier-col-list { display: flex; flex-direction: column; min-height: 60px; }
 .tier-col-list.drop-over { outline: 2px dashed var(--accent); outline-offset: -2px; }
-
 .player-row {
-  display: flex; align-items: center; gap: 8px;
-  padding: 7px 10px;
-  background: var(--row-bg);
-  border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+  background: var(--row-bg); border-top: 1px solid var(--border);
   cursor: default; transition: background .1s; position: relative;
 }
 .player-row:first-child { border-top: none; }
-.tier-col-list.admin-mode .player-row { cursor: grab; }
+.tier-col-list.admin-mode .player-row:not(.retired-row) { cursor: grab; }
 .player-row:hover { background: var(--row-hover); }
 .player-row.dragging { opacity: 0.25; }
-
+.retired-row { opacity: 0.55; }
 .mc-head { width: 24px; height: 24px; border-radius: 3px; image-rendering: pixelated; flex-shrink: 0; }
 .player-name { flex: 1; font-size: 0.85rem; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.tier-indicator { font-size: 0.75rem; font-weight: 700; margin-left: 4px; flex-shrink: 0; width: 16px; text-align: center; }
-.tier-indicator.high-tier { color: #4ade80; }
-.tier-indicator.low-tier  { color: #f87171; }
-
+.retired-badge {
+  font-size: 0.58rem; font-weight: 700; letter-spacing: 0.5px;
+  background: #4a3a10; color: #c89040; border: 1px solid #8a6020;
+  border-radius: 3px; padding: 1px 5px; flex-shrink: 0;
+}
 .col-empty { padding: 14px 10px; font-size: 0.75rem; color: var(--muted); font-style: italic; text-align: center; }
 
 /* ── Unranked ────────────────────────── */
-#unranked-section { margin-top: 14px; }
-.unranked-wrap { background: var(--row-bg); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.unranked-wrap { background: var(--row-bg); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-top: 12px; }
 .unranked-title { padding: 8px 14px; font-size: 0.72rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); }
 .unranked-list { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; min-height: 50px; }
-.unranked-list .player-row { border: 1px solid var(--border); border-radius: 5px; width: auto; flex: none; }
-.unranked-list .player-row:first-child { border-top: 1px solid var(--border); }
+.unranked-list .player-row { border: 1px solid var(--border); border-radius: 5px; width: auto; flex: none; border-top: 1px solid var(--border); }
 .unranked-list.drop-over { outline: 2px dashed var(--accent); outline-offset: -2px; border-radius: 8px; }
 
 /* ── Overall leaderboard ─────────────── */
 .empty-state { padding: 60px; text-align: center; color: var(--muted); font-style: italic; }
-
 .overall-header {
-  display: grid;
-  grid-template-columns: 220px 1fr 120px 1fr;
-  gap: 12px;
-  padding: 8px 16px;
+  display: grid; grid-template-columns: 200px 1fr 110px 1fr;
+  gap: 10px; padding: 7px 14px;
   border-bottom: 1px solid var(--border);
-  font-size: 0.68rem; font-weight: 700;
-  letter-spacing: 1.5px; text-transform: uppercase;
-  color: var(--muted); margin-bottom: 8px;
+  font-size: 0.66rem; font-weight: 700; letter-spacing: 1.4px;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 6px;
 }
 .oh-primary { text-align: center; }
-.oh-tiers { text-align: center; }
+.oh-tiers   { text-align: left; }
 
 .overall-row {
-  display: grid;
-  grid-template-columns: 220px 1fr 120px 1fr;
-  gap: 12px;
-  align-items: center;
-  margin-bottom: 6px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  overflow: hidden;
-  background: var(--row-bg);
-  transition: background .12s;
+  display: grid; grid-template-columns: 200px 1fr 110px 1fr;
+  gap: 10px; align-items: center;
+  margin-bottom: 5px; border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden;
+  background: var(--row-bg); transition: background .12s; cursor: default;
 }
 .overall-row:hover { background: var(--row-hover); }
 
-/* Rank cell — colored left panel like mctiers */
+/* Rank cell */
 .or-rank-cell {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  min-height: 64px;
-  position: relative;
-  overflow: hidden;
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 14px; min-height: 72px; overflow: hidden; position: relative;
 }
-.rank-cell-1 { background: linear-gradient(135deg, #7a5c00, #b8900a); }
-.rank-cell-2 { background: linear-gradient(135deg, #2a3040, #424a60); }
-.rank-cell-3 { background: linear-gradient(135deg, #4a2800, #7a4a18); }
-.rank-cell-other { background: var(--card); }
+.rank-num { font-size: 1.4rem; font-weight: 800; flex-shrink: 0; z-index: 1; }
+.rank-top   { color: rgba(255,255,255,0.95); }
+.rank-other { color: var(--muted); font-size: 1.1rem; }
 
-.rank-num {
-  font-size: 1.3rem; font-weight: 800;
-  color: rgba(255,255,255,0.9);
-  z-index: 1; flex-shrink: 0;
-  min-width: 36px;
-}
-.rank-cell-other .rank-num { color: var(--muted); font-size: 1.1rem; }
-
-.mc-skin-bg {
-  width: 44px; height: 44px;
-  border-radius: 4px;
+/* Full body skin for top 3 (mctiers style) */
+.mc-body {
+  height: 72px; width: auto;
   image-rendering: pixelated;
-  z-index: 1;
-  flex-shrink: 0;
+  object-fit: contain; object-position: top;
+  flex-shrink: 0; z-index: 1;
 }
-.rank-cell-other .mc-skin-bg { opacity: 0.8; width: 32px; height: 32px; }
+.mc-head-sm {
+  width: 36px; height: 36px;
+  border-radius: 4px; image-rendering: pixelated; flex-shrink: 0; z-index: 1;
+}
 
 /* Player info */
-.or-player-cell {
-  display: flex; flex-direction: column; gap: 3px;
-  padding: 10px 0; min-width: 0;
-}
-.or-name { font-size: 1rem; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.or-title { font-size: 0.78rem; font-weight: 600; }
-.or-pts { color: var(--muted); font-weight: 400; font-size: 0.73rem; }
+.or-player-cell { display: flex; flex-direction: column; gap: 4px; padding: 12px 0; min-width: 0; }
+.or-name  { font-size: 1rem; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.or-title { font-size: 0.76rem; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.or-pts   { color: var(--muted); font-size: 0.72rem; }
 
 /* Primary badge */
 .or-primary-cell { display: flex; align-items: center; justify-content: center; }
 .primary-badge {
-  font-size: 0.72rem; font-weight: 700;
-  padding: 4px 10px; border-radius: 6px;
-  border: 1px solid; white-space: nowrap;
+  font-size: 0.72rem; font-weight: 700; padding: 4px 10px;
+  border-radius: 6px; border: 1px solid; white-space: nowrap;
 }
 .unranked-badge { color: var(--muted); background: transparent; border-color: var(--border); }
 
-/* Tier circles (like mctiers circular badge + label underneath) */
-.or-tiers-cell {
-  display: flex; gap: 6px;
-  align-items: center;
-  flex-wrap: wrap;
-  padding: 8px 12px 8px 0;
-}
-.tier-circle-wrap {
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-  cursor: default;
-}
-.tier-circle {
-  width: 36px; height: 36px;
-  border-radius: 50%;
-  border: 2px solid;
-  display: flex; align-items: center; justify-content: center;
-}
-.tier-circle-empty { background: #1a1d2a; border-color: var(--border); }
-.tc-icon { width: 16px; height: 16px; display:flex; align-items:center; justify-content:center; opacity:0.85; }
-.tc-icon svg { width:100%; height:100%; }
-.tc-icon img { width:100%; height:100%; object-fit:contain; filter:brightness(0.9); }
-.tc-label { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.5px; text-align:center; }
+/* Tier circles — mctiers style: dark circle bg, icon inside, label below */
+.or-tiers-cell { display: flex; gap: 5px; align-items: flex-start; flex-wrap: wrap; padding: 10px 6px; }
+.tier-circle-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; position: relative; }
+.tier-circle-wrap:hover .tier-tooltip { opacity: 1; pointer-events: auto; transform: translateY(0); }
 
-/* ── Context Menu ────────────────────── */
-#context-menu {
-  position: fixed; background: #1e2230; border: 1px solid var(--border);
-  border-radius: 8px; padding: 6px; min-width: 160px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 1000;
-  display: none; flex-direction: column; gap: 2px;
+.tier-circle {
+  width: 38px; height: 38px; border-radius: 50%; border: 2px solid;
+  display: flex; align-items: center; justify-content: center;
+  background: #111520; /* dark circle like mctiers */
+  transition: filter .15s;
 }
-.context-menu-item {
+.tier-circle:hover { filter: brightness(1.2); }
+.tc-gm-icon { width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; }
+.tc-gm-icon svg { width: 100%; height: 100%; }
+.tc-gm-icon img { width: 100%; height: 100%; object-fit: contain; }
+.tc-label { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.5px; text-align: center; }
+
+/* Tooltip on hover */
+.tier-tooltip {
+  position: absolute; bottom: calc(100% + 8px); left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background: #1e2235; border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 10px;
+  font-size: 0.72rem; font-weight: 600; color: var(--text);
+  white-space: nowrap; pointer-events: none;
+  opacity: 0; transition: opacity .15s, transform .15s;
+  z-index: 100; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+.tier-tooltip .tt-pts { color: var(--muted); font-weight: 400; }
+
+.retired-wrap .tier-circle { filter: grayscale(0.5); }
+
+/* ── Context menus ───────────────────── */
+.ctx-menu {
+  position: fixed; background: #1e2235; border: 1px solid var(--border);
+  border-radius: 8px; padding: 5px;
+  min-width: 170px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  z-index: 1000; display: none; flex-direction: column; gap: 2px;
+}
+.ctx-item {
   padding: 8px 12px; cursor: pointer; color: var(--text);
-  font-size: 0.8rem; font-weight: 500; border-radius: 4px;
-  transition: background 0.15s; display: flex; align-items: center; gap: 8px;
+  font-size: 0.8rem; font-weight: 500; border-radius: 5px;
+  transition: background .12s; display: flex; align-items: center; gap: 8px;
 }
-.context-menu-item:hover { background: var(--row-hover); }
-.context-menu-item.active { background: rgba(88,101,242,0.2); color: #fff; }
-.context-menu-item .indicator-icon { font-size: 0.7rem; width: 16px; text-align: center; }
-.context-menu-item.high-option .indicator-icon { color: #4ade80; }
-.context-menu-item.low-option  .indicator-icon { color: #f87171; }
-.context-menu-divider { height: 1px; background: var(--border); margin: 4px 0; }
+.ctx-item:hover { background: var(--row-hover); }
+.ctx-item.danger { color: #e05555; }
+.ctx-item.danger:hover { background: rgba(224,85,85,0.1); }
+.ctx-sep { height: 1px; background: var(--border); margin: 3px 0; }
 
 /* ── Modal ───────────────────────────── */
 #login-modal {
-  display: none; position: fixed; inset: 0;
-  background: rgba(0,0,0,0.75); z-index: 300;
-  align-items: center; justify-content: center; backdrop-filter: blur(5px);
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+  z-index: 300; align-items: center; justify-content: center; backdrop-filter: blur(5px);
 }
 .modal-box {
-  background: #12141e; border: 1px solid var(--border);
-  border-radius: 12px; padding: 28px; width: 320px;
-  display: flex; flex-direction: column; gap: 12px;
+  background: #12141e; border: 1px solid var(--border); border-radius: 12px;
+  padding: 28px; width: 320px; display: flex; flex-direction: column; gap: 12px;
   box-shadow: 0 24px 64px rgba(0,0,0,0.7);
 }
 .modal-box h2 { font-size: 1rem; font-weight: 700; color: #fff; }
 .modal-box p  { font-size: 0.78rem; color: var(--muted); line-height: 1.5; }
 .modal-box input {
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: 6px; padding: 8px 11px; color: var(--text);
-  font-family: 'Inter', sans-serif; font-size: 0.88rem; outline: none; width: 100%;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 11px; color: var(--text); font-family: 'Inter', sans-serif;
+  font-size: 0.88rem; outline: none; width: 100%;
 }
 .modal-box input:focus { border-color: var(--accent); }
 #pw-error { display: none; font-size: 0.75rem; color: #e05050; }
 .modal-btns { display: flex; gap: 7px; }
 .modal-btns button {
-  flex: 1; padding: 8px; border-radius: 6px;
-  font-family: 'Inter', sans-serif; font-size: 0.83rem; font-weight: 600;
-  cursor: pointer; border: none;
+  flex: 1; padding: 8px; border-radius: 6px; font-family: 'Inter', sans-serif;
+  font-size: 0.83rem; font-weight: 600; cursor: pointer; border: none;
 }
 .btn-confirm { background: var(--accent); color: #fff; }
 .btn-confirm:hover { opacity: 0.85; }
@@ -838,25 +843,25 @@ body {
 
 /* ── Toast ───────────────────────────── */
 .toast {
-  position: fixed; bottom: 20px; right: 20px;
-  background: #22aa55; color: #fff;
+  position: fixed; bottom: 20px; right: 20px; background: #22aa55; color: #fff;
   font-size: 0.8rem; font-weight: 600; padding: 9px 16px; border-radius: 6px;
-  opacity: 0; transform: translateY(6px);
-  transition: opacity .18s, transform .18s; z-index: 999; pointer-events: none;
+  opacity: 0; transform: translateY(6px); transition: opacity .18s, transform .18s;
+  z-index: 999; pointer-events: none;
 }
 .toast.show { opacity: 1; transform: translateY(0); }
 .toast.err  { background: #c0392b; }
 
 /* ── Responsive ──────────────────────── */
-@media (max-width: 900px) {
-  #tier-grid { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 1000px) {
   .overall-header, .overall-row { grid-template-columns: 160px 1fr 90px auto; }
 }
-@media (max-width: 640px) {
-  #tier-grid { grid-template-columns: repeat(2, 1fr); }
-  .overall-header, .overall-row { grid-template-columns: 120px 1fr auto; }
+@media (max-width: 800px) {
+  #tier-grid { grid-template-columns: repeat(3, 1fr); }
+  .overall-header, .overall-row { grid-template-columns: 130px 1fr auto; }
   .oh-primary, .or-primary-cell { display: none; }
-  .tab-btn { padding: 7px 12px 9px; }
+}
+@media (max-width: 540px) {
+  #tier-grid { grid-template-columns: repeat(2, 1fr); }
 }
 </style>
 </head>
@@ -874,32 +879,27 @@ body {
   <span class="lbl">● Admin</span>
   <input type="text" id="player-input" placeholder="Minecraft username..." onkeydown="handleKey(event)" maxlength="24">
   <button class="btn-add" onclick="addPlayer()">+ Add Player</button>
-  <span class="admin-hint">Drag to rank · Right-click player for HT/LT · Right-click unranked to remove</span>
+  <span class="admin-hint">Drag to rank · Right-click for options</span>
 </div>
 
 <div class="page-wrap">
-  <!-- Tabs -->
   <div id="tab-bar"></div>
-
-  <!-- Main card -->
   <div class="main-card">
     <div id="main-content"></div>
-    <div id="unranked-section"></div>
   </div>
 </div>
 
-<!-- Context Menu -->
-<div id="context-menu">
-  <div class="context-menu-item high-option" id="ctx-high-tier" onclick="setTierLevel('high')">
-    <span class="indicator-icon">▲</span><span>Make High Tier (HT)</span>
-  </div>
-  <div class="context-menu-item low-option" id="ctx-low-tier" onclick="setTierLevel('low')">
-    <span class="indicator-icon">▼</span><span>Make Low Tier (LT)</span>
-  </div>
-  <div class="context-menu-divider" id="ctx-clear-tier" style="display:none"></div>
-  <div class="context-menu-item" id="ctx-clear-btn" onclick="setTierLevel(null)" style="display:none;color:#888">
-    <span class="indicator-icon">—</span><span>Clear Designation</span>
-  </div>
+<!-- In-gamemode context menu -->
+<div id="ctx-player" class="ctx-menu">
+  <div class="ctx-item" id="ctx-retire"   onclick="ctxRetire()">  🕰 Retire this rank</div>
+  <div class="ctx-item" id="ctx-unretire" onclick="ctxUnretire()">♻ Un-retire rank</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item danger"            onclick="ctxRemove()">  🗑 Remove player</div>
+</div>
+
+<!-- Overall context menu -->
+<div id="ctx-overall" class="ctx-menu">
+  <div class="ctx-item" onclick="ctxCopy()">📋 Copy player info</div>
 </div>
 
 <!-- Login modal -->
@@ -911,7 +911,7 @@ body {
     <div id="pw-error">Incorrect password. Try again.</div>
     <div class="modal-btns">
       <button class="btn-confirm" onclick="tryLogin()">Login</button>
-      <button class="btn-cancel" onclick="closeLogin()">Cancel</button>
+      <button class="btn-cancel"  onclick="closeLogin()">Cancel</button>
     </div>
   </div>
 </div>
