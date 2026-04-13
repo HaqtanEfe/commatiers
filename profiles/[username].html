@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Player Profile — PVP Tiers</title>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, doc, onSnapshot, collection, query, where, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDdz5u46Q8IIOEmfUOSmCxKBnoE52A7y34",
+    authDomain: "friendstierlist-9a5fb.firebaseapp.com",
+    projectId: "friendstierlist-9a5fb",
+    storageBucket: "friendstierlist-9a5fb.firebasestorage.app",
+    messagingSenderId: "774591972842",
+    appId: "1:774591972842:web:d414a35464b4742fa21e93"
+  };
+
+  const ICONS = {
+    overall:  "../icons/overall.svg",
+    crystal:  "../icons/crystal.svg",
+    sword:    "../icons/sword.svg",
+    smp:      "../icons/smp.svg",
+    uhc:      "../icons/uhc.svg",
+    mace:     "../icons/mace.svg",
+    axe:      "../icons/axe.svg",
+    title_grandmaster: "../icons/combat_grandmaster.webp",
+    title_master:      "../icons/combat_master.webp",
+    title_ace:         "../icons/combat_ace.svg",
+    title_specialist:  "../icons/combat_specialist.svg",
+    title_cadet:       "../icons/combat_cadet.svg",
+    title_novice:      "../icons/combat_novice.svg",
+    title_rookie:      "../icons/combat_rookie.svg",
+  };
+
+  const GAMEMODES = [
+    { id: "crystal", label: "Crystal" },
+    { id: "sword",   label: "Sword"   },
+    { id: "smp",     label: "SMP"     },
+    { id: "uhc",     label: "UHC"     },
+    { id: "mace",    label: "Mace"    },
+    { id: "axe",     label: "Axe"     },
+  ];
+
+  const TIERS = [
+    { id: "T1", label: "Tier 1", color: "#c8a84b", points: { base: 45, ht: 60, lt: 35 } },
+    { id: "T2", label: "Tier 2", color: "#888ea0", points: { base: 20, ht: 30, lt: 15 } },
+    { id: "T3", label: "Tier 3", color: "#a0663a", points: { base:  6, ht: 10, lt:  4 } },
+    { id: "T4", label: "Tier 4", color: "#5a6070", points: { base:  3, ht:  4, lt:  2 } },
+    { id: "T5", label: "Tier 5", color: "#4a5060", points: { base:  1, ht:  2, lt:  1 } },
+  ];
+
+  const TITLES = [
+    { key: "grandmaster", min: 360, label: "Combat Grandmaster", color: "#f5c518" },
+    { key: "master",      min: 250, label: "Combat Master",       color: "#c8a84b" },
+    { key: "ace",         min: 100, label: "Combat Ace",          color: "#e05555" },
+    { key: "specialist",  min:  50, label: "Combat Specialist",   color: "#9b8dff" },
+    { key: "cadet",       min:  20, label: "Combat Cadet",        color: "#5a8fd4" },
+    { key: "novice",      min:  10, label: "Combat Novice",       color: "#5a8fd4" },
+    { key: "rookie",      min:   0, label: "Rookie",              color: "#667"    },
+  ];
+
+  function getTitle(pts) { return TITLES.find(t => pts >= t.min) || TITLES[TITLES.length - 1]; }
+
+  // Get username from URL: /profiles/username or /profiles/username.html
+  function getUsernameFromURL() {
+    const path = window.location.pathname;
+    // Could be /profiles/Steve or /profiles/Steve.html (local file)
+    const parts = path.split('/').filter(Boolean);
+    let name = parts[parts.length - 1] || '';
+    if (name.endsWith('.html')) name = name.slice(0, -5);
+    // URL decode
+    return decodeURIComponent(name);
+  }
+
+  // SVG fallbacks
+  function svgStr(id) {
+    const svgs = {
+      overall: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`,
+      crystal: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="12,2 22,9 18,21 6,21 2,9"/><line x1="12" y1="2" x2="12" y2="21"/><line x1="2" y1="9" x2="22" y2="9"/></svg>`,
+      sword:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="12" y1="2" x2="12" y2="18"/><path d="M8 6l4-4 4 4"/><path d="M9 18h6"/><path d="M10 21h4"/></svg>`,
+      smp:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14.5 10c-.83 0-1.5-.67-1.5-1.5v-5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5z"/><path d="M20.5 10H19V8.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/><path d="M9.5 14c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5S8 21.33 8 20.5v-5c0-.83.67-1.5 1.5-1.5z"/><path d="M3.5 14H5v1.5c0 .83-.67 1.5-1.5 1.5S2 16.33 2 15.5 2.67 14 3.5 14z"/><path d="M14 14.5c0-.83.67-1.5 1.5-1.5h5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-5c-.83 0-1.5-.67-1.5-1.5z"/><path d="M15.5 19.5c-.83 0-1.5-.67-1.5-1.5v-1.5h1.5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5z"/><path d="M10 9.5c0 .83-.67 1.5-1.5 1.5H3.5C2.67 11 2 10.33 2 9.5S2.67 8 3.5 8h5c.83 0 1.5.67 1.5 1.5z"/><path d="M8.5 5c.83 0 1.5.67 1.5 1.5V8H8.5C7.67 8 7 7.33 7 6.5S7.67 5 8.5 5z"/></svg>`,
+      uhc:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+      mace:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="1" width="6" height="10" rx="2"/><rect x="5" y="3" width="14" height="6" rx="2"/><line x1="12" y1="11" x2="12" y2="23"/></svg>`,
+      axe:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 12L5 21"/><path d="M14.5 4.5C12 2 8 2.5 6 5c-1.5 2-1 5 .5 7l8-8c-1-1.5-1.5-3-1-4.5z"/><path d="M14.5 4.5c1.5-1 3.5-.5 4.5 1 1.5 2 1 5-.5 7l-4-4"/></svg>`,
+    };
+    return svgs[id] || svgs.sword;
+  }
+
+  function gmIconHtml(id, size = 18) {
+    if (ICONS[id]) return `<img src="${ICONS[id]}" width="${size}" height="${size}" style="object-fit:contain" onerror="this.outerHTML='<span style=\\'width:${size}px;height:${size}px;display:inline-flex;align-items:center;justify-content:center\\'>${svgStr(id)}</span>'">`;
+    return `<span style="width:${size}px;height:${size}px;display:inline-flex;align-items:center;justify-content:center">${svgStr(id)}</span>`;
+  }
+
+  function titleIconHtml(title) {
+    const path = ICONS[`title_${title.key}`];
+    if (path) return `<img src="${path}" style="width:16px;height:16px;object-fit:contain;vertical-align:middle" onerror="this.style.display='none'">`;
+    return '';
+  }
+
+  function playerTierPoints(name, gm, tier, tierLevels) {
+    const lv = tierLevels?.[gm]?.[tier.id]?.[name];
+    if (lv === 'high') return tier.points.ht;
+    if (lv === 'low')  return tier.points.lt;
+    return tier.points.base;
+  }
+
+  function calcPoints(name, state) {
+    let total = 0;
+    GAMEMODES.forEach(gm => {
+      TIERS.forEach(tier => {
+        const inActive  = (state.tiers[gm.id]?.[tier.id]   || []).includes(name);
+        const inRetired = (state.retired[gm.id]?.[tier.id]  || []).includes(name);
+        if (inActive || inRetired) total += playerTierPoints(name, gm.id, tier, state.tierLevels);
+      });
+    });
+    return total;
+  }
+
+  function bestTierOf(name, gmId, state) {
+    for (const tier of TIERS) {
+      const lv = state.tierLevels?.[gmId]?.[tier.id]?.[name] || null;
+      if ((state.tiers[gmId]?.[tier.id] || []).includes(name))
+        return { tier, level: lv, retired: false };
+      if ((state.retired[gmId]?.[tier.id] || []).includes(name))
+        return { tier, level: lv, retired: true };
+    }
+    return null;
+  }
+
+  function formatTierDisplay(tierId, level) {
+    const lvLabel = level === 'high' ? 'HT' : level === 'low' ? 'LT' : '';
+    return lvLabel ? `${lvLabel}${tierId.replace('T', '')}` : tierId;
+  }
+
+  function formatDate(ts) {
+    if (!ts) return 'Unknown date';
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function timeAgo(ts) {
+    if (!ts) return '';
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    const diff = (Date.now() - d.getTime()) / 1000;
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+    if (diff < 2592000) return `${Math.floor(diff/86400)}d ago`;
+    if (diff < 31536000) return `${Math.floor(diff/2592000)}mo ago`;
+    return `${Math.floor(diff/31536000)}y ago`;
+  }
+
+  // ── Main ─────────────────────────────────────────────
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
+  const REF = doc(db, "tierlist", "data");
+
+  const username = getUsernameFromURL();
+
+  if (!username) {
+    document.title = "Profile Not Found — PVP Tiers";
+  } else {
+    document.title = `${username} — PVP Tiers`;
+  }
+
+  onSnapshot(REF, async (snap) => {
+    if (!snap.exists()) { showError("Database unavailable."); return; }
+    const state = snap.data();
+
+    // Ensure structure
+    if (!state.players) state.players = [];
+    GAMEMODES.forEach(gm => {
+      if (!state.tiers)      state.tiers = {};
+      if (!state.tierLevels) state.tierLevels = {};
+      if (!state.retired)    state.retired = {};
+      if (!state.tiers[gm.id])      state.tiers[gm.id] = {};
+      if (!state.tierLevels[gm.id]) state.tierLevels[gm.id] = {};
+      if (!state.retired[gm.id])    state.retired[gm.id] = {};
+      TIERS.forEach(t => {
+        if (!state.tiers[gm.id][t.id])      state.tiers[gm.id][t.id] = [];
+        if (!state.tierLevels[gm.id][t.id]) state.tierLevels[gm.id][t.id] = {};
+        if (!state.retired[gm.id][t.id])    state.retired[gm.id][t.id] = [];
+      });
+    });
+
+    // Case-insensitive player lookup
+    const actualName = state.players.find(p => p.toLowerCase() === username.toLowerCase());
+
+    if (!actualName) {
+      showNotFound(username);
+      return;
+    }
+
+    const points = calcPoints(actualName, state);
+    const title  = getTitle(points);
+
+    // Gather test history
+    const history = (state.history || []).filter(h => h.player?.toLowerCase() === actualName.toLowerCase());
+    history.sort((a, b) => {
+      const ta = a.timestamp?.seconds || 0;
+      const tb = b.timestamp?.seconds || 0;
+      return tb - ta;
+    });
+
+    renderProfile(actualName, points, title, state, history);
+  });
+
+  function showError(msg) {
+    document.getElementById('profile-root').innerHTML = `
+      <div class="error-state">
+        <div class="error-icon">⚠</div>
+        <div>${msg}</div>
+      </div>`;
+  }
+
+  function showNotFound(name) {
+    document.getElementById('profile-root').innerHTML = `
+      <div class="not-found">
+        <img src="https://minotar.net/avatar/MHF_Steve/80" class="nf-avatar" onerror="this.style.display='none'">
+        <div class="nf-title">Player not found</div>
+        <div class="nf-sub">"${name}" isn't in the tier list yet.</div>
+        <a href="/" class="back-btn">← Back to Tier List</a>
+      </div>`;
+  }
+
+  function renderProfile(name, points, title, state, history) {
+    const root = document.getElementById('profile-root');
+    root.innerHTML = '';
+
+    // ── Hero section ─────────────────────────────────
+    const hero = document.createElement('div');
+    hero.className = 'hero';
+
+    // Rank badge
+    const allPlayers = (state.players || []).map(p => ({
+      name: p, points: calcPoints(p, state)
+    })).sort((a, b) => b.points - a.points);
+    let rank = 1;
+    for (let i = 0; i < allPlayers.length; i++) {
+      if (i > 0 && allPlayers[i].points < allPlayers[i-1].points) rank = i + 1;
+      if (allPlayers[i].name.toLowerCase() === name.toLowerCase()) { rank = rank; break; }
+      if (i < allPlayers.length - 1 && allPlayers[i+1].name.toLowerCase() !== name.toLowerCase()) rank = i + 2;
+    }
+    // Recompute rank properly
+    let playerRank = 1;
+    for (let i = 0; i < allPlayers.length; i++) {
+      if (allPlayers[i].name.toLowerCase() === name.toLowerCase()) { playerRank = i + 1; break; }
+    }
+
+    hero.innerHTML = `
+      <div class="hero-bg-glow" style="background: radial-gradient(ellipse 60% 40% at 30% 50%, ${title.color}18, transparent)"></div>
+      <div class="hero-inner">
+        <div class="hero-avatar-wrap">
+          <img class="hero-body" src="https://minotar.net/body/${encodeURIComponent(name)}/80"
+               onerror="this.src='https://minotar.net/body/MHF_Steve/80'">
+        </div>
+        <div class="hero-info">
+          <div class="hero-rank-row">
+            <span class="hero-rank">#${playerRank}</span>
+            <span class="hero-rank-label">overall rank</span>
+          </div>
+          <h1 class="hero-name">${name}</h1>
+          <div class="hero-title-row">
+            ${titleIconHtml(title)}
+            <span class="hero-title-text" style="color:${title.color}">${title.label}</span>
+          </div>
+          <div class="hero-points">${points.toLocaleString()} <span class="pts-label">points</span></div>
+        </div>
+      </div>
+    `;
+    root.appendChild(hero);
+
+    // ── Tiers section ─────────────────────────────────
+    const tiersSection = document.createElement('div');
+    tiersSection.className = 'section';
+    tiersSection.innerHTML = `<div class="section-title">
+      <span class="section-icon">🏆</span> Gamemode Tiers
+    </div>`;
+
+    const tilesGrid = document.createElement('div');
+    tilesGrid.className = 'gm-tiles';
+
+    GAMEMODES.forEach(gm => {
+      const result = bestTierOf(name, gm.id, state);
+      const tile = document.createElement('div');
+      tile.className = 'gm-tile' + (result ? '' : ' gm-tile-unranked');
+
+      if (result) {
+        const { tier, level, retired } = result;
+        const pts = playerTierPoints(name, gm.id, tier, state.tierLevels);
+        const lvLabel = level === 'high' ? 'HT' : level === 'low' ? 'LT' : '';
+        const displayId = lvLabel ? `${lvLabel}${tier.id.replace('T','')}` : tier.id;
+        const tc = tier.color;
+
+        tile.style.setProperty('--tc', tc);
+        tile.innerHTML = `
+          <div class="gm-tile-top">
+            <div class="gm-tile-icon">${gmIconHtml(gm.id, 22)}</div>
+            <span class="gm-tile-name">${gm.label}</span>
+          </div>
+          <div class="gm-tile-tier" style="color:${tc}${retired ? ';opacity:0.55' : ''}">${displayId}${retired ? '<span class="ret-star">*</span>' : ''}</div>
+          <div class="gm-tile-pts" style="color:${tc}99">${pts} pts</div>
+          ${retired ? '<div class="gm-tile-retired">Retired</div>' : ''}
+          <div class="gm-tile-glow" style="background: radial-gradient(ellipse at bottom, ${tc}22, transparent 70%)"></div>
+        `;
+      } else {
+        tile.innerHTML = `
+          <div class="gm-tile-top">
+            <div class="gm-tile-icon">${gmIconHtml(gm.id, 22)}</div>
+            <span class="gm-tile-name">${gm.label}</span>
+          </div>
+          <div class="gm-tile-tier" style="color:var(--muted)">—</div>
+          <div class="gm-tile-pts" style="color:var(--muted)">Unranked</div>
+        `;
+      }
+      tilesGrid.appendChild(tile);
+    });
+
+    tiersSection.appendChild(tilesGrid);
+    root.appendChild(tiersSection);
+
+    // ── History section ────────────────────────────────
+    const histSection = document.createElement('div');
+    histSection.className = 'section';
+    histSection.innerHTML = `<div class="section-title">
+      <span class="section-icon">📋</span> Test History
+      <span class="section-count">${history.length} record${history.length !== 1 ? 's' : ''}</span>
+    </div>`;
+
+    if (!history.length) {
+      histSection.innerHTML += `<div class="hist-empty">No tier changes recorded yet.<br><span style="font-size:0.75rem;color:var(--muted)">Tier changes will appear here once logged.</span></div>`;
+    } else {
+      const timeline = document.createElement('div');
+      timeline.className = 'timeline';
+
+      history.forEach((entry, i) => {
+        const gm = GAMEMODES.find(g => g.id === entry.gamemode) || { label: entry.gamemode || '?', id: entry.gamemode || 'sword' };
+        const toTier   = TIERS.find(t => t.id === entry.toTier)   || null;
+        const fromTier = TIERS.find(t => t.id === entry.fromTier) || null;
+
+        const toColor   = toTier   ? toTier.color   : 'var(--muted)';
+        const fromColor = fromTier ? fromTier.color  : 'var(--muted)';
+
+        const toDisplay   = toTier   ? formatTierDisplay(toTier.id,   entry.toLevel   || null) : 'Unranked';
+        const fromDisplay = fromTier ? formatTierDisplay(fromTier.id, entry.fromLevel || null) : 'Unranked';
+
+        // Determine if upgrade, downgrade, or same
+        let changeType = 'change';
+        if (toTier && fromTier) {
+          const toRank   = TIERS.findIndex(t => t.id === toTier.id);
+          const fromRank = TIERS.findIndex(t => t.id === fromTier.id);
+          if (toRank < fromRank) changeType = 'upgrade';
+          else if (toRank > fromRank) changeType = 'downgrade';
+        } else if (toTier && !fromTier) { changeType = 'upgrade'; }
+        else if (!toTier && fromTier)   { changeType = 'downgrade'; }
+
+        const arrow = changeType === 'upgrade' ? '↑' : changeType === 'downgrade' ? '↓' : '↔';
+        const arrowColor = changeType === 'upgrade' ? '#4ade80' : changeType === 'downgrade' ? '#f87171' : '#888ea0';
+
+        const item = document.createElement('div');
+        item.className = 'timeline-item';
+        item.style.animationDelay = `${i * 0.04}s`;
+
+        item.innerHTML = `
+          <div class="tl-dot" style="background:${toColor}"></div>
+          <div class="tl-body">
+            <div class="tl-top-row">
+              <div class="tl-gm-badge">
+                <span class="tl-gm-icon">${gmIconHtml(gm.id, 14)}</span>
+                <span>${gm.label}</span>
+              </div>
+              <div class="tl-change">
+                ${fromTier ? `<span class="tl-tier" style="color:${fromColor}">${fromDisplay}</span>` : `<span class="tl-tier" style="color:var(--muted)">Unranked</span>`}
+                <span class="tl-arrow" style="color:${arrowColor}">${arrow}</span>
+                ${toTier ? `<span class="tl-tier" style="color:${toColor};font-weight:700">${toDisplay}</span>` : `<span class="tl-tier" style="color:var(--muted)">Removed</span>`}
+              </div>
+              ${entry.note ? `<span class="tl-note">${entry.note}</span>` : ''}
+              <div class="tl-time">
+                <span class="tl-timeago">${timeAgo(entry.timestamp)}</span>
+                <span class="tl-date">${formatDate(entry.timestamp)}</span>
+              </div>
+            </div>
+          </div>
+        `;
+        timeline.appendChild(item);
+      });
+
+      histSection.appendChild(timeline);
+    }
+    root.appendChild(histSection);
+
+    // Show info note about history
+    const note = document.createElement('div');
+    note.className = 'history-note';
+    note.innerHTML = `<span style="color:var(--muted);font-size:0.72rem">💡 Tier history is only recorded for changes made after history logging was enabled. Past tiers are shown above.</span>`;
+    root.appendChild(note);
+
+    // Back link
+    const backWrap = document.createElement('div');
+    backWrap.className = 'back-wrap';
+    backWrap.innerHTML = `<a href="/" class="back-btn">← Back to Tier List</a>`;
+    root.appendChild(backWrap);
+  }
+</script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0a0c14;
+  --card:      #111420;
+  --card2:     #161a28;
+  --row-bg:    #141828;
+  --row-hover: #1c2238;
+  --border:    #1e2438;
+  --border2:   #252d45;
+  --text:      #d8dcf0;
+  --muted:     #4a5470;
+  --accent:    #5865f2;
+  --line:      #1e2540;
+}
+
+html, body { min-height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  /* subtle grid bg */
+  background-image:
+    linear-gradient(rgba(88,101,242,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(88,101,242,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* ── Nav ─────────────────── */
+.top-nav {
+  height: 54px;
+  background: rgba(17,20,32,0.95);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.site-logo {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #fff;
+  text-decoration: none;
+}
+.site-logo:hover { color: #a0aaff; }
+.nav-sep { color: var(--muted); font-size: 0.75rem; }
+.nav-player-name {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 1px;
+}
+
+/* ── Page ─────────────────── */
+.page-wrap {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+
+/* ── Hero ─────────────────── */
+.hero {
+  position: relative;
+  background: var(--card2);
+  border: 1px solid var(--border2);
+  border-radius: 20px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+.hero-bg-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.hero-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  gap: 28px;
+  padding: 32px 36px 32px 32px;
+}
+.hero-avatar-wrap {
+  flex-shrink: 0;
+  position: relative;
+}
+.hero-body {
+  height: 110px;
+  width: auto;
+  image-rendering: pixelated;
+  object-fit: contain;
+  object-position: top;
+  filter: drop-shadow(0 8px 24px rgba(0,0,0,0.6));
+}
+.hero-info {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 4px;
+}
+.hero-rank-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.hero-rank {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+}
+.hero-rank-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+.hero-name {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 2.6rem;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+  word-break: break-word;
+}
+.hero-title-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 10px;
+}
+.hero-title-text {
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.hero-points {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #fff;
+}
+.pts-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted);
+  margin-left: 2px;
+}
+
+/* ── Sections ─────────────── */
+.section {
+  background: var(--card2);
+  border: 1px solid var(--border2);
+  border-radius: 16px;
+  padding: 22px 24px;
+  margin-bottom: 20px;
+}
+.section-title {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text);
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-icon { font-size: 1rem; }
+.section-count {
+  margin-left: auto;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+  text-transform: none;
+  background: var(--row-bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 3px 10px;
+}
+
+/* ── GM Tiles ─────────────── */
+.gm-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.gm-tile {
+  position: relative;
+  background: var(--row-bg);
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  padding: 16px 14px 14px;
+  overflow: hidden;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.gm-tile:hover {
+  border-color: var(--tc, var(--border2));
+  transform: translateY(-2px);
+}
+.gm-tile-unranked { opacity: 0.45; }
+.gm-tile-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 10px;
+}
+.gm-tile-icon {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.gm-tile-icon svg { width: 100%; height: 100%; }
+.gm-tile-name {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.gm-tile-tier {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1.8rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 3px;
+}
+.ret-star {
+  font-size: 1rem;
+  vertical-align: super;
+}
+.gm-tile-pts {
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.gm-tile-retired {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  background: #3a2e08;
+  color: #c89040;
+  border: 1px solid #7a5a18;
+  border-radius: 3px;
+  padding: 2px 6px;
+  display: inline-block;
+  margin-top: 5px;
+}
+.gm-tile-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.gm-tile > *:not(.gm-tile-glow) { position: relative; z-index: 1; }
+
+/* ── Timeline ─────────────── */
+.hist-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 32px 0;
+  font-size: 0.85rem;
+  line-height: 2;
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  position: relative;
+}
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 14px;
+  bottom: 14px;
+  width: 2px;
+  background: var(--line);
+  border-radius: 2px;
+}
+
+.timeline-item {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  animation: fadeSlideIn 0.3s ease both;
+}
+.timeline-item:last-child { border-bottom: none; }
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.tl-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 2px;
+  position: relative;
+  z-index: 1;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.tl-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.tl-top-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tl-gm-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text);
+  background: var(--row-bg);
+  border: 1px solid var(--border2);
+  border-radius: 5px;
+  padding: 3px 8px;
+  flex-shrink: 0;
+}
+.tl-gm-icon {
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.tl-change {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+}
+
+.tl-tier {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.tl-arrow {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.tl-note {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-style: italic;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-time {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  flex-shrink: 0;
+}
+.tl-timeago {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.tl-date {
+  font-size: 0.65rem;
+  color: var(--muted);
+}
+
+/* ── Misc ─────────────────── */
+.history-note {
+  text-align: center;
+  padding: 0 0 8px;
+}
+.back-wrap { padding: 4px 0 0; }
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.12s;
+  padding: 6px 0;
+}
+.back-btn:hover { color: var(--text); }
+
+.not-found, .error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 80px 20px;
+  text-align: center;
+}
+.nf-avatar { width: 80px; height: 80px; image-rendering: pixelated; border-radius: 6px; opacity: 0.5; }
+.nf-title { font-family: 'Rajdhani', sans-serif; font-size: 1.5rem; font-weight: 700; color: var(--text); }
+.nf-sub { font-size: 0.85rem; color: var(--muted); }
+.error-icon { font-size: 2rem; color: #e05555; }
+
+/* Loading */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 100px 0;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.loading-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.2s ease infinite;
+}
+.loading-dot:nth-child(2) { animation-delay: 0.2s; }
+.loading-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes pulse {
+  0%, 100% { opacity: 0.2; transform: scale(0.8); }
+  50%       { opacity: 1;   transform: scale(1.2); }
+}
+
+/* ── Responsive ───────────── */
+@media (max-width: 640px) {
+  .hero-inner { gap: 16px; padding: 24px 20px; }
+  .hero-name { font-size: 1.9rem; }
+  .hero-body { height: 80px; }
+  .gm-tiles { grid-template-columns: repeat(2, 1fr); }
+  .tl-top-row { gap: 6px; }
+  .tl-note { display: none; }
+}
+@media (max-width: 420px) {
+  .gm-tiles { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <a href="/" class="site-logo">⚔ PVPTIERS</a>
+  <span class="nav-sep">/</span>
+  <span class="nav-player-name" id="nav-name">Profile</span>
+</nav>
+
+<div class="page-wrap">
+  <div id="profile-root">
+    <div class="loading">
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Set nav name from URL immediately (before Firebase loads)
+  (function() {
+    const path = window.location.pathname;
+    const parts = path.split('/').filter(Boolean);
+    let name = parts[parts.length - 1] || '';
+    if (name.endsWith('.html')) name = name.slice(0, -5);
+    name = decodeURIComponent(name);
+    if (name) document.getElementById('nav-name').textContent = name;
+  })();
+</script>
+
+</body>
+</html>
