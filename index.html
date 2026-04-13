@@ -6,7 +6,7 @@
 <title>PVP Tiers</title>
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, doc, setDoc, onSnapshot, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyDdz5u46Q8IIOEmfUOSmCxKBnoE52A7y34",
@@ -40,7 +40,7 @@
   };
 
   // =====================================================
-  // 🎮 Gamemodes — same as original repo
+  // 🎮 Gamemodes
   // =====================================================
   const GAMEMODES = [
     { id: "crystal", label: "Crystal" },
@@ -52,8 +52,7 @@
   ];
 
   // =====================================================
-  // 🏆 Tiers — same T1–T5 columns as original
-  //    HT/LT is stored in tierLevels, NOT as separate tiers
+  // 🏆 Tiers
   // =====================================================
   const TIERS = [
     { id: "T1", label: "Tier 1", color: "#c8a84b", headerBg: "#2a2010", headerText: "#e8c96a", points: { base: 45, ht: 60, lt: 35 } },
@@ -112,7 +111,7 @@
         retired[gm.id][t.id]    = [];
       });
     });
-    return { players: [], tiers, tierLevels, retired };
+    return { players: [], tiers, tierLevels, retired, history: [] };
   }
 
   const app = initializeApp(firebaseConfig);
@@ -122,6 +121,33 @@
   let state = emptyState(), isAdmin = false, activeGM = "overall";
   let dragPlayer = null, dragSrc = null;
   let ctxPlayer = null, ctxTier = null, ctxRetiredFlag = false;
+
+  // ── History logging ─────────────────────────────────
+  // Finds the current tier+level for a player in a given gamemode
+  function currentTierInfo(name, gmId) {
+    for (const tier of TIERS) {
+      const lv = state.tierLevels?.[gmId]?.[tier.id]?.[name] || null;
+      if ((state.tiers[gmId]?.[tier.id] || []).includes(name))
+        return { tierId: tier.id, level: lv, retired: false };
+      if ((state.retired[gmId]?.[tier.id] || []).includes(name))
+        return { tierId: tier.id, level: lv, retired: true };
+    }
+    return null;
+  }
+
+  // Appends a history entry. fromInfo and toInfo are { tierId, level } or null.
+  function logHistory(playerName, gmId, fromInfo, toInfo) {
+    if (!state.history) state.history = [];
+    state.history.push({
+      player:    playerName,
+      gamemode:  gmId,
+      fromTier:  fromInfo?.tierId  || null,
+      fromLevel: fromInfo?.level   || null,
+      toTier:    toInfo?.tierId    || null,
+      toLevel:   toInfo?.level     || null,
+      timestamp: Timestamp.now(),
+    });
+  }
 
   async function save() {
     try { await setDoc(REF, state); }
@@ -135,6 +161,7 @@
       if (!d.tiers)      d.tiers      = {};
       if (!d.tierLevels) d.tierLevels = {};
       if (!d.retired)    d.retired    = {};
+      if (!d.history)    d.history    = [];
       GAMEMODES.forEach(gm => {
         if (!d.tiers[gm.id])      d.tiers[gm.id]      = {};
         if (!d.tierLevels[gm.id]) d.tierLevels[gm.id] = {};
@@ -245,7 +272,6 @@
       const row = document.createElement("div");
       row.className = "overall-row";
 
-      // Rank cell — colored + body skin for top 3, head for rest (mctiers style)
       const rankBg = rank === 1 ? "linear-gradient(135deg,#6a4800,#c89010)"
                    : rank === 2 ? "linear-gradient(135deg,#2e3444,#4c5470)"
                    : rank === 3 ? "linear-gradient(135deg,#4a2200,#8a4a10)"
@@ -265,7 +291,6 @@
                onerror="this.src='https://minotar.net/avatar/MHF_Steve/36'">`;
       }
 
-      // Player info
       const playerCell = document.createElement("div");
       playerCell.className = "or-player-cell";
       playerCell.innerHTML = `
@@ -275,7 +300,6 @@
           <span class="or-pts">(${p.points} points)</span>
         </span>`;
 
-      // Primary gamemode
       const primaryCell = document.createElement("div");
       primaryCell.className = "or-primary-cell";
       if (primaryGM && primaryResult) {
@@ -285,7 +309,6 @@
         primaryCell.innerHTML = `<span class="primary-badge unranked-badge">—</span>`;
       }
 
-      // Tier circles — sorted best → worst, dark bg + gamemode icon like mctiers
       const tiersCell = document.createElement("div");
       tiersCell.className = "or-tiers-cell";
 
@@ -299,7 +322,6 @@
         const wrap = document.createElement("div");
         wrap.className = "tier-circle-wrap" + (retired ? " retired-wrap" : "");
 
-        // Tooltip
         const ttName = `${gm.label}: ${tier.label}${lvLabel ? ' ('+lvLabel+')' : ''}`;
         const ttPts = `${pts} pts${retired ? ' · Retired' : ''}`;
 
@@ -325,7 +347,7 @@
       row.appendChild(tiersCell);
       content.appendChild(row);
 
-      // Right-click to copy
+      // Right-click — overall context menu (includes View Profile)
       row.addEventListener("contextmenu", e => {
         e.preventDefault();
         showOverallCtx(e.pageX, e.pageY, p.name, title, p.points, p.sortedGMs);
@@ -333,12 +355,11 @@
     });
   }
 
-  // ── Per-gamemode (original layout) ─────────────────
+  // ── Per-gamemode ────────────────────────────────────
   function renderGamemode() {
     const content = document.getElementById("main-content");
     content.innerHTML = "";
 
-    // 5 tier columns
     const grid = document.createElement("div");
     grid.id = "tier-grid";
     content.appendChild(grid);
@@ -379,7 +400,6 @@
       grid.appendChild(col);
     });
 
-    // Unranked section
     const inActive  = new Set(TIERS.flatMap(t => state.tiers[activeGM]?.[t.id]  || []));
     const inRetired = new Set(TIERS.flatMap(t => state.retired[activeGM]?.[t.id] || []));
     const unranked  = (state.players || []).filter(p => !inActive.has(p) && !inRetired.has(p));
@@ -417,13 +437,11 @@
     const nm = document.createElement("span");
     nm.className = "player-name"; nm.textContent = name;
 
-    // HT/LT indicator
     const indicator = document.createElement("span");
     indicator.className = "tier-indicator";
     if (level === 'high')  { indicator.innerHTML = '▲'; indicator.classList.add('high-tier'); indicator.title = 'High Tier'; }
     if (level === 'low')   { indicator.innerHTML = '▼'; indicator.classList.add('low-tier');  indicator.title = 'Low Tier'; }
 
-    // Retired badge
     const retBadge = document.createElement("span");
     if (retired) { retBadge.className = "retired-badge"; retBadge.textContent = "Retired"; }
 
@@ -455,14 +473,24 @@
     el.addEventListener("drop", e => {
       e.preventDefault(); el.classList.remove("drop-over");
       if (!dragPlayer || !isAdmin) return;
+
+      // Capture "from" state for history before mutation
+      const fromInfo = currentTierInfo(dragPlayer, activeGM);
+
       if (dragSrc !== "unranked") {
         state.tiers[activeGM][dragSrc] = state.tiers[activeGM][dragSrc].filter(p => p !== dragPlayer);
-        // Clear level when moved
         if (state.tierLevels[activeGM]?.[dragSrc]?.[dragPlayer])
           delete state.tierLevels[activeGM][dragSrc][dragPlayer];
       }
       if (targetTier !== "unranked" && !state.tiers[activeGM][targetTier].includes(dragPlayer))
         state.tiers[activeGM][targetTier].push(dragPlayer);
+
+      // Log history if tier actually changed
+      const toInfo = targetTier !== "unranked" ? { tierId: targetTier, level: null } : null;
+      if (fromInfo?.tierId !== toInfo?.tierId) {
+        logHistory(dragPlayer, activeGM, fromInfo, toInfo);
+      }
+
       save(); dragPlayer = null; dragSrc = null;
     });
   }
@@ -493,6 +521,7 @@
         retired: s.result.retired
       }))
     });
+    menu.dataset.profileName = name;
     posMenu(menu, x, y);
   }
 
@@ -514,19 +543,35 @@
 
   function setLevel(level) {
     if (!ctxPlayer || !ctxTier || ctxTier === "unranked") return;
+
+    // Capture old level for history
+    const oldLevel = state.tierLevels?.[activeGM]?.[ctxTier]?.[ctxPlayer] || null;
+
     if (!state.tierLevels[activeGM])          state.tierLevels[activeGM]          = {};
     if (!state.tierLevels[activeGM][ctxTier]) state.tierLevels[activeGM][ctxTier] = {};
     if (level) state.tierLevels[activeGM][ctxTier][ctxPlayer] = level;
     else       delete state.tierLevels[activeGM][ctxTier][ctxPlayer];
+
+    // Log HT/LT change as a tier history entry
+    if (oldLevel !== level) {
+      logHistory(ctxPlayer, activeGM,
+        { tierId: ctxTier, level: oldLevel },
+        { tierId: ctxTier, level: level }
+      );
+    }
+
     save(); hideCtx();
   }
 
   window.ctxRetire = () => {
     if (!ctxPlayer || !ctxTier || ctxTier === "unranked") return;
+    const fromInfo = currentTierInfo(ctxPlayer, activeGM);
     state.tiers[activeGM][ctxTier] = state.tiers[activeGM][ctxTier].filter(p => p !== ctxPlayer);
     if (!state.retired[activeGM][ctxTier]) state.retired[activeGM][ctxTier] = [];
     if (!state.retired[activeGM][ctxTier].includes(ctxPlayer))
       state.retired[activeGM][ctxTier].push(ctxPlayer);
+    // Log as a tier change (retired flag)
+    logHistory(ctxPlayer, activeGM, fromInfo, { tierId: ctxTier, level: fromInfo?.level || null, note: 'Retired' });
     save(); hideCtx();
   };
 
@@ -535,6 +580,10 @@
     state.retired[activeGM][ctxTier] = state.retired[activeGM][ctxTier].filter(p => p !== ctxPlayer);
     if (!state.tiers[activeGM][ctxTier].includes(ctxPlayer))
       state.tiers[activeGM][ctxTier].push(ctxPlayer);
+    logHistory(ctxPlayer, activeGM,
+      { tierId: ctxTier, level: null },
+      { tierId: ctxTier, level: null }
+    );
     save(); hideCtx();
   };
 
@@ -561,6 +610,14 @@
     ];
     navigator.clipboard.writeText(lines.join("\n"))
       .then(() => toast("Copied ✓")).catch(() => toast("Copy failed", true));
+    hideCtx();
+  };
+
+  // ── NEW: View Profile ────────────────────────────────
+  window.ctxViewProfile = () => {
+    const name = document.getElementById("ctx-overall").dataset.profileName;
+    if (!name) return;
+    window.location.href = `/profiles/${encodeURIComponent(name)}`;
     hideCtx();
   };
 
@@ -654,14 +711,14 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-ser
 /* ── Main card ───────────── */
 .main-card { background: var(--card2); border: 2px solid var(--border); border-radius: 0 16px 16px 16px; padding: 18px; min-height: 400px; }
 
-/* ── Tier grid (5 columns) ── */
+/* ── Tier grid ───────────── */
 #tier-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 .tier-col { background: var(--row-bg); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
 .tier-col-header { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 13px 8px; }
 .trophy-icon { font-size: 1rem; }
 .tier-col-title { font-size: 0.88rem; font-weight: 700; }
 
-/* ── Player rows (gamemode) ─ */
+/* ── Player rows ──────────── */
 .tier-col-list { display: flex; flex-direction: column; min-height: 60px; }
 .tier-col-list.drop-over { outline: 2px dashed var(--accent); outline-offset: -2px; }
 .player-row { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--row-bg); border-top: 1px solid var(--border); cursor: default; transition: background .1s; position: relative; }
@@ -693,7 +750,6 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-ser
 .overall-row { display: grid; grid-template-columns: 200px 1fr 110px 1fr; gap: 10px; align-items: center; margin-bottom: 5px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--row-bg); transition: background .12s; }
 .overall-row:hover { background: var(--row-hover); }
 
-/* Rank cell */
 .or-rank-cell { display: flex; align-items: center; gap: 10px; padding: 0 14px; min-height: 72px; overflow: hidden; }
 .rank-num { font-size: 1.3rem; font-weight: 800; flex-shrink: 0; z-index: 1; }
 .rank-top   { color: rgba(255,255,255,0.92); }
@@ -701,18 +757,15 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-ser
 .mc-body { height: 72px; width: auto; image-rendering: pixelated; object-fit: contain; object-position: top; flex-shrink: 0; }
 .mc-head-sm { width: 36px; height: 36px; border-radius: 4px; image-rendering: pixelated; flex-shrink: 0; }
 
-/* Player info */
 .or-player-cell { display: flex; flex-direction: column; gap: 4px; padding: 12px 0; min-width: 0; }
 .or-name  { font-size: 1rem; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .or-title { font-size: 0.76rem; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .or-pts   { color: var(--muted); font-size: 0.72rem; }
 
-/* Primary badge */
 .or-primary-cell { display: flex; align-items: center; justify-content: center; }
 .primary-badge { font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 6px; border: 1px solid; white-space: nowrap; }
 .unranked-badge { color: var(--muted); background: transparent; border-color: var(--border); }
 
-/* Tier circles (mctiers style: dark bg, icon, label) */
 .or-tiers-cell { display: flex; gap: 6px; align-items: flex-start; flex-wrap: wrap; padding: 10px 6px; }
 .tier-circle-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; position: relative; cursor: default; }
 .tier-circle { width: 38px; height: 38px; border-radius: 50%; border: 2px solid; display: flex; align-items: center; justify-content: center; background: #0e1120; transition: filter .15s; }
@@ -722,11 +775,9 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-ser
 .tc-gm-icon img { width: 100%; height: 100%; object-fit: contain; }
 .tc-label { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.5px; text-align: center; }
 
-/* Tooltip */
 .tier-tooltip { position: absolute; bottom: calc(100% + 7px); left: 50%; transform: translateX(-50%); background: #1c2138; border: 1px solid var(--border); border-radius: 7px; padding: 7px 11px; font-size: 0.72rem; font-weight: 600; color: var(--text); white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .15s; z-index: 200; box-shadow: 0 4px 20px rgba(0,0,0,0.5); line-height: 1.6; }
 .tier-circle-wrap:hover .tier-tooltip { opacity: 1; }
 .tt-pts { color: var(--muted); font-weight: 400; }
-.retired-wrap .tier-circle { }
 
 /* ── Context menus ────────── */
 .ctx-menu { position: fixed; background: #1c2138; border: 1px solid var(--border); border-radius: 9px; padding: 5px; min-width: 175px; box-shadow: 0 10px 32px rgba(0,0,0,0.55); z-index: 1000; display: none; flex-direction: column; gap: 2px; }
@@ -735,6 +786,8 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-ser
 .ctx-item.active { background: rgba(88,101,242,0.18); color: #aab4ff; }
 .ctx-item.danger { color: #e05555; }
 .ctx-item.danger:hover { background: rgba(224,85,85,0.1); }
+.ctx-item.profile { color: #a0aaff; }
+.ctx-item.profile:hover { background: rgba(88,101,242,0.14); }
 .ctx-sep { height: 1px; background: var(--border); margin: 3px 0; }
 
 /* ── Modal ────────────────── */
@@ -787,7 +840,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-ser
   </div>
 </div>
 
-<!-- In-gamemode context menu -->
+<!-- In-gamemode context menu (admin only) -->
 <div id="ctx-player" class="ctx-menu">
   <div class="ctx-item" id="ctx-ht" onclick="ctxSetHT()">▲ <span style="color:#4ade80">High Tier (HT)</span></div>
   <div class="ctx-item" id="ctx-lt" onclick="ctxSetLT()">▼ <span style="color:#f87171">Low Tier (LT)</span></div>
@@ -799,8 +852,10 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-ser
   <div class="ctx-item danger"            onclick="ctxRemove()">🗑 Remove player</div>
 </div>
 
-<!-- Overall context menu -->
+<!-- Overall context menu (everyone) -->
 <div id="ctx-overall" class="ctx-menu">
+  <div class="ctx-item profile" onclick="ctxViewProfile()">👤 View Profile</div>
+  <div class="ctx-sep"></div>
   <div class="ctx-item" onclick="ctxCopy()">📋 Copy player info</div>
 </div>
 
